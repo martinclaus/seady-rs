@@ -1,6 +1,38 @@
 //! A framework for quickly developing high performance ocean and atmosphere models
 
+pub mod grid;
 pub mod mask;
+
+use std::ops::{Add, Div, Mul, Sub};
+
+/// Super Trait for numeric data types. It only contains a single method
+/// but the trait bounds include all the necessary traits to ensure
+/// that we can do number crunching with this type.
+pub trait Numeric:
+    Copy
+    + Add<Output = Self>
+    + Mul<Output = Self>
+    + Mul<Output = Self>
+    + Sub<Output = Self>
+    + Div<Output = Self>
+    + Add<f64, Output = Self>
+    + Mul<f64, Output = Self>
+    + Mul<f64, Output = Self>
+    + Sub<f64, Output = Self>
+    + Div<f64, Output = Self>
+    + From<f64>
+    + Into<f64>
+    + Copy
+{
+    /// Returns zero of this type.
+    fn zero() -> Self;
+}
+
+impl Numeric for f64 {
+    fn zero() -> Self {
+        0f64
+    }
+}
 
 pub mod field {
     //! Provides the [`Arr2D`] type, which is the basic data type to deal with 2D arrays,
@@ -46,7 +78,7 @@ pub mod field {
     /// assert_eq!(arr[[0, 1]], 1.0);
     /// assert_eq!(arr[[1, 1]], 1.0);
     /// ```
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     pub struct Arr2D<I> {
         size: (usize, usize),
         data: Box<[I]>,
