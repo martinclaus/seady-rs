@@ -1,11 +1,16 @@
 //! A framework for quickly developing high performance ocean and atmosphere models
 
-mod field {
+pub mod mask;
+
+pub mod field {
     //! Provides the [`Arr2D`] type, which is the basic data type to deal with 2D arrays,
     //! and the [`Field`] trait which must be implemented by any type that shall be used to store
     //! data of model variables.
 
-    use std::ops::{Add, AddAssign, Index, IndexMut};
+    use std::{
+        fmt::Display,
+        ops::{Add, AddAssign, Index, IndexMut},
+    };
 
     /// Type alias for Array sizes
     pub type Size2D = (usize, usize);
@@ -35,12 +40,14 @@ mod field {
     /// use seady::field::Field;
     ///
     /// let arr = Arr2D::full(1f64, (2, 2));
+    /// arr.data = (0..4).map(|i| f64::from(i)).collect::Vec<f64>().as_boxed_slice()
     ///
     /// assert_eq!(arr[[0, 0]], 1.0);
     /// assert_eq!(arr[[1, 0]], 1.0);
     /// assert_eq!(arr[[0, 1]], 1.0);
     /// assert_eq!(arr[[1, 1]], 1.0);
     /// ```
+    #[derive(Debug)]
     pub struct Arr2D<I> {
         size: (usize, usize),
         data: Box<[I]>,
@@ -108,6 +115,42 @@ mod field {
 
         fn size(&self) -> Size2D {
             self.size
+        }
+    }
+
+    impl<I: Display> Display for Arr2D<I> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let ilen = self.size.1;
+            write!(f, "[")?;
+            for j in 0..self.size.0 {
+                let s = &self.data[j * ilen..(j + 1) * ilen]
+                    .iter()
+                    .map(|i| format!("{}", i))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                write!(f, "[{}]", s)?;
+                if j != self.size.0 - 1 {
+                    write!(f, ",\n ")?;
+                } else {
+                    write!(f, "]")?;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[cfg(test)]
+    mod test {
+        use super::{Arr2D, Field};
+
+        #[test]
+        fn display_output() {
+            let mut arr = Arr2D::full(1f64, (3, 5));
+            arr[[1, 2]] = 0f64;
+            assert_eq!(
+                format!("{}", arr),
+                "[[1,1,1,1,1],\n [1,1,0,1,1],\n [1,1,1,1,1]]"
+            );
         }
     }
 }
