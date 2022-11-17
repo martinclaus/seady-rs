@@ -40,7 +40,6 @@ pub mod field {
     /// use seady::field::Field;
     ///
     /// let arr = Arr2D::full(1f64, (2, 2));
-    /// arr.data = (0..4).map(|i| f64::from(i)).collect::Vec<f64>().as_boxed_slice()
     ///
     /// assert_eq!(arr[[0, 0]], 1.0);
     /// assert_eq!(arr[[1, 0]], 1.0);
