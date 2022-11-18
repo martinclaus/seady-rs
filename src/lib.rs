@@ -2,6 +2,8 @@
 
 pub mod grid;
 pub mod mask;
+pub mod state;
+pub mod variable;
 
 use std::ops::{Add, Div, Mul, Sub};
 
@@ -50,6 +52,14 @@ pub mod field {
     /// Type alias for index tuples
     pub type Ix2 = [usize; 2];
 
+    pub fn cyclic_shift(idx: usize, shift: isize, len: usize) -> usize {
+        let len = len as isize;
+        match (idx as isize) + shift {
+            i if i < 0 => (i + len) as usize,
+            i if i >= len => (i - len) as usize,
+            i => i as usize,
+        }
+    }
     /// Trait for array backends.
     pub trait Field<I>
     where

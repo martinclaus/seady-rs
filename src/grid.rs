@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::field::{Arr2D, Field, Ix2, Size2D};
+use crate::field::{cyclic_shift, Arr2D, Field, Ix2, Size2D};
 use crate::mask::Mask;
 use crate::Numeric;
 
@@ -46,16 +46,17 @@ where
     // fn cartesian(size: Size2D, x_start: I, y_start: I, dx: I, dy: I) -> Self;
 
     fn is_v_inside(pos: Ix2, center_mask: &<Self::Grid as Grid<I, M>>::MaskContainer) -> bool {
-        let jp1 = (pos[0] + 1) % center_mask.size().0;
+        let jp1 = cyclic_shift(pos[0], 1, center_mask.size().0);
         center_mask[pos].is_inside() && center_mask[[jp1, pos[1]]].is_inside()
     }
     fn is_h_inside(pos: Ix2, center_mask: &<Self::Grid as Grid<I, M>>::MaskContainer) -> bool {
-        let ip1 = (pos[1] + 1) % center_mask.size().1;
+        let ip1 = cyclic_shift(pos[1], 1, center_mask.size().1);
         center_mask[pos].is_inside() && center_mask[[pos[0], ip1]].is_inside()
     }
     fn is_corner_inside(pos: Ix2, center_mask: &<Self::Grid as Grid<I, M>>::MaskContainer) -> bool {
-        let ip1 = (pos[1] + 1) % center_mask.size().1;
-        let jp1 = (pos[0] + 1) % center_mask.size().0;
+        let (len_j, len_i) = center_mask.size();
+        let ip1 = cyclic_shift(pos[1], 1, len_i);
+        let jp1 = cyclic_shift(pos[0], 1, len_j);
         center_mask[pos].is_inside()
             && center_mask[[pos[0], ip1]].is_inside()
             && center_mask[[jp1, ip1]].is_inside()
@@ -80,7 +81,7 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Grid2D<I, M> {
     x: Arr2D<I>,
     y: Arr2D<I>,
@@ -166,6 +167,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct StaggeredGrid<G> {
     center: Rc<G>,
     h_side: Rc<G>,
