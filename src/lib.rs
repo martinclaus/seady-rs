@@ -183,7 +183,7 @@ pub mod field {
 
     #[cfg(test)]
     mod test {
-        use super::{Arr2D, Field};
+        use super::{cyclic_shift, Arr2D, Field};
 
         #[test]
         fn display_output() {
@@ -193,6 +193,17 @@ pub mod field {
                 format!("{}", arr),
                 "[[1,1,1,1,1],\n [1,1,0,1,1],\n [1,1,1,1,1]]"
             );
+        }
+
+        #[test]
+        fn test_cyclic_shift() {
+            let size: usize = 10;
+            assert_eq!(cyclic_shift(0, 1, size), 1);
+            assert_eq!(cyclic_shift(1, 1, size), 2);
+            assert_eq!(cyclic_shift(1, -1, size), 0);
+            assert_eq!(cyclic_shift(0, -1, size), size - 1);
+            assert_eq!(cyclic_shift(size - 1, 2, size), 1);
+            assert_eq!(cyclic_shift(1, 3, size), 4);
         }
     }
 }
