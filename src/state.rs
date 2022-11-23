@@ -1,12 +1,14 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::VecDeque,
     hash::Hash,
+    marker::PhantomData,
     ops::{Index, IndexMut},
     rc::Rc,
 };
 
 use crate::{mask::Mask, variable::Variable};
 
+/// Prognostic variables of the shallow water equations
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum SWMVars {
     U,
@@ -14,58 +16,76 @@ pub enum SWMVars {
     ETA,
 }
 
-pub trait VarSet: Sized + Copy + Eq + Hash {
+/// Trait for sets of [`State`] variable identifier
+///
+/// A type that implements VarSet must provided a unique index for each identifier starting at 0.
+/// Typically this can be achieved by implementing the trait on an enum which must not use
+/// [custom discriminant values](https://doc.rust-lang.org/reference/items/enumerations.html#custom-discriminant-values-for-fieldless-enumerations).
+pub trait VarSet: Sized + Copy {
     fn values() -> &'static [Self];
+    fn as_usize(&self) -> usize;
 }
 
 impl VarSet for SWMVars {
     fn values() -> &'static [Self] {
         &[Self::U, Self::V, Self::ETA][..]
     }
+
+    fn as_usize(&self) -> usize {
+        *self as usize
+    }
 }
 
 #[derive(Debug)]
 pub struct State<K, V> {
-    vars: HashMap<K, V>,
+    vars: Box<[V]>,
+    var_set: PhantomData<K>,
 }
 
-#[derive(Debug, Clone)]
-pub struct GridMap<K, G>(K, Rc<G>)
+impl<K, V> Index<K> for State<K, V>
 where
-    K: Clone;
+    K: VarSet,
+{
+    type Output = V;
+
+    fn index(&self, index: K) -> &Self::Output {
+        assert!(self.vars.len() > index.as_usize());
+        &self.vars[index.as_usize()]
+    }
+}
+
+impl<K, V> IndexMut<K> for State<K, V>
+where
+    K: VarSet,
+{
+    fn index_mut(&mut self, index: K) -> &mut Self::Output {
+        assert!(self.vars.len() > index.as_usize());
+        &mut self.vars[index.as_usize()]
+    }
+}
+
+// #[derive(Debug, Clone)]
+pub type GridMap<K, G> = (K, Rc<G>);
 
 impl<K, V> State<K, V>
 where
-    K: VarSet,
+    K: VarSet + Clone,
 {
     pub fn new<I, M>(grid_map: &[GridMap<K, <V as Variable<I, M>>::Grid>]) -> Self
     where
         V: Variable<I, M>,
         M: Mask,
     {
+        let mut grid_map = grid_map.to_vec();
+        grid_map.sort_by_key(|a| a.0.as_usize());
         State {
-            vars: HashMap::from_iter(grid_map.iter().map(|GridMap(k, g)| (*k, V::zeros(g)))),
+            vars: grid_map
+                .iter()
+                .map(|(_, g)| V::zeros(g))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            var_set: PhantomData,
         }
-    }
-}
-
-impl<K, V> Index<K> for State<K, V>
-where
-    K: Eq + Hash,
-{
-    type Output = V;
-
-    fn index(&self, index: K) -> &Self::Output {
-        self.vars.get(&index).unwrap()
-    }
-}
-
-impl<K, V> IndexMut<K> for State<K, V>
-where
-    K: Eq + Hash,
-{
-    fn index_mut(&mut self, index: K) -> &mut Self::Output {
-        self.vars.get_mut(&index).unwrap()
     }
 }
 
@@ -91,14 +111,6 @@ where
             grid_map: grid_map.collect::<Vec<_>>().into_boxed_slice(),
             buffer: VecDeque::new(),
         }
-    }
-
-    pub fn from_state(state: State<K, V>) -> Self {
-        let grid_map = state
-            .vars
-            .iter()
-            .map(|(k, v)| GridMap(*k, v.get_grid().clone()));
-        Self::new(grid_map)
     }
 
     pub fn with_capacity(mut self, capacity: usize) -> Self {
@@ -202,7 +214,7 @@ mod test {
         variable::Var,
     };
 
-    use super::{GridMap, StateDeque, StateFactory, VarSet};
+    use super::{StateDeque, StateFactory, VarSet};
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     enum SingleVar {
@@ -213,6 +225,10 @@ mod test {
         fn values() -> &'static [Self] {
             &[SingleVar::Var]
         }
+
+        fn as_usize(&self) -> usize {
+            *self as usize
+        }
     }
 
     fn make_simple_state_factory(
@@ -220,9 +236,18 @@ mod test {
         let mut grid = Grid2D::cartesian((5, 5), 0f64, 0f64, 1.0, 1.0);
         grid.with_mask(Arr2D::full(DomainMask::Inside, (5, 5)));
 
-        let grid_map: GridMap<_, _> = GridMap(SingleVar::Var, Rc::new(grid));
+        let grid_map = (SingleVar::Var, Rc::new(grid));
 
         StateFactory::new([grid_map].into_iter())
+    }
+
+    #[test]
+    fn state_index_returns_variable() {
+        let state = make_simple_state_factory().make_state();
+
+        assert_eq!(state.vars.len(), 1);
+
+        let _ = &state[SingleVar::Var];
     }
 
     #[test]
