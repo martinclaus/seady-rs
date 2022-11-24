@@ -31,6 +31,24 @@ pub struct State<K, V>(Map<K, V>)
 where
     K: VarKey;
 
+impl<K, V> AsRef<Map<K, V>> for State<K, V>
+where
+    K: VarKey,
+{
+    fn as_ref(&self) -> &Map<K, V> {
+        &self.0
+    }
+}
+
+impl<K, V> AsMut<Map<K, V>> for State<K, V>
+where
+    K: VarKey,
+{
+    fn as_mut(&mut self) -> &mut Map<K, V> {
+        &mut self.0
+    }
+}
+
 impl<K, V> Index<K> for State<K, V>
 where
     K: VarKey,
@@ -193,6 +211,15 @@ where
     }
 }
 
+impl<K, V> AsMut<VecDeque<State<K, V>>> for StateDeque<K, V>
+where
+    K: VarKey,
+{
+    fn as_mut(&mut self) -> &mut VecDeque<State<K, V>> {
+        &mut self.0
+    }
+}
+
 impl<K, V> Index<usize> for StateDeque<K, V>
 where
     K: VarKey,
@@ -200,7 +227,7 @@ where
     type Output = State<K, V>;
 
     fn index(&self, index: usize) -> &Self::Output {
-        self.0.index(index)
+        &self.as_ref()[index]
     }
 }
 
@@ -209,7 +236,7 @@ where
     K: VarKey,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        self.0.index_mut(index)
+        &mut self.as_mut()[index]
     }
 }
 
