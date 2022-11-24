@@ -1,3 +1,14 @@
+//! Time integration methods.
+//!
+//! Time integration can be abstracted as a two step process. First, an increment is computed
+//! which is then added to some previous state to update it to the next time step.
+//! Often, both steps are combined, but we keep them separated to allow for mixing different integration
+//! strategies, i.e. to use different strategies for different terms in the set of PDE.
+//!
+//! The strategy pattern is used to specialize about the particular integration scheme.
+//! A strategy must implement the [Integrator] trait. Integration itself is then performed by the
+//! [Integrate] struct which statically dispatches with respect to the strategy.
+
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 
@@ -5,18 +16,27 @@ use crate::mask::Mask;
 use crate::Numeric;
 use crate::{field::Field, variable::Variable};
 
+/// Coefficients of the 2nd order Adams-Bashforth scheme
 const AB2_FAC: [f64; 2] = [-1f64 / 2f64, 3f64 / 2f64];
+
+/// Coefficients of the 3rd order Adams-Bashforth scheme
 const AB3_FAC: [f64; 3] = [5f64 / 12f64, -16f64 / 12f64, 23f64 / 12f64];
 
+/// Provides the necessary interface for integration strategies.
 pub trait Integrator<V, I, M> {
-    fn call(past_state: &VecDeque<&V>, step: I, idx: [usize; 2]) -> I;
+    /// Take (previous) evaluations of the right-hand side of the PDE and compute the
+    /// numerical approximation of the derivative multiplied by the step size.
+    /// The computation is at a single grid point.
+    fn call(past_rhs: &VecDeque<&V>, step: I, idx: [usize; 2]) -> I;
 }
 
+/// Generic integrator that statically dispatch about the integration strategy.
 pub struct Integrate<I> {
     _integrator_type: PhantomData<I>,
 }
 
 impl<IS> Integrate<IS> {
+    /// Compute the change from one timestep to the next.
     pub fn compute_inc<V: Variable<I, M>, I, M: Mask>(
         past_state: VecDeque<&V>,
         step: I,
@@ -38,6 +58,7 @@ impl<IS> Integrate<IS> {
     }
 }
 
+/// Euler forward scheme.
 pub struct Ef;
 
 impl<V, I, M> Integrator<V, I, M> for Ef
@@ -51,6 +72,7 @@ where
     }
 }
 
+/// Adams-Bashforth 2nd order scheme
 pub struct Ab2;
 
 impl<V, I, M> Integrator<V, I, M> for Ab2
@@ -70,6 +92,7 @@ where
     }
 }
 
+/// Adams-Bashforth 3rd order scheme
 pub struct Ab3;
 
 impl<V, I, M> Integrator<V, I, M> for Ab3

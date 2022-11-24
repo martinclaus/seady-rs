@@ -1,3 +1,5 @@
+//! Data structures and traits to describe the state of an dynamical system
+
 use std::{
     collections::VecDeque,
     hash::Hash,
@@ -36,6 +38,10 @@ impl VarSet for SWMVars {
     }
 }
 
+/// State of a system.
+///
+/// The state is a collection of all prognostic variables of an set of differential equations, that are
+/// the variables which for the solution of the system.
 #[derive(Debug)]
 pub struct State<K, V> {
     vars: Box<[V]>,
@@ -64,13 +70,17 @@ where
     }
 }
 
-// #[derive(Debug, Clone)]
+/// Type alias for tuples of variable id and grid to define the variable on.
 pub type GridMap<K, G> = (K, Rc<G>);
 
 impl<K, V> State<K, V>
 where
     K: VarSet + Clone,
 {
+    /// Create a new state from an slice of grid mappings.
+    ///
+    /// Note that `grid_map` will be sorted such that the variables created in `self.vars` will be inserted
+    /// the ordering implied by [VarSet::as_usize].
     pub fn new<I, M>(grid_map: &[GridMap<K, <V as Variable<I, M>>::Grid>]) -> Self
     where
         V: Variable<I, M>,
@@ -89,12 +99,16 @@ where
     }
 }
 
+/// Buffered factory object for new state objects
+///
+/// This object creates new state objects.
+/// Additionally, it provides a buffer to store used state objects for later
+/// reuse to reduce the number of memory allocations.
 #[derive(Debug)]
 pub struct StateFactory<K, V, I, M>
 where
     V: Variable<I, M>,
     M: Mask,
-    K: Clone,
 {
     grid_map: Box<[GridMap<K, V::Grid>]>,
     buffer: VecDeque<State<K, V>>,
@@ -103,9 +117,9 @@ where
 impl<K, V, I, M> StateFactory<K, V, I, M>
 where
     V: Variable<I, M>,
-    K: Copy,
     M: Mask,
 {
+    /// Create a new StateFactory object
     pub fn new(grid_map: impl Iterator<Item = GridMap<K, V::Grid>>) -> Self {
         Self {
             grid_map: grid_map.collect::<Vec<_>>().into_boxed_slice(),
@@ -113,18 +127,24 @@ where
         }
     }
 
+    /// Consume a StateFactory and return it with a modified capacity of the internal buffer.
+    ///
+    /// Note that the capacity is only approximately set and may slightly differ from the value of `capacity`.
     pub fn with_capacity(mut self, capacity: usize) -> Self {
         self.buffer.reserve(capacity);
         self
     }
 
-    pub fn make_state(&self) -> State<K, V>
+    /// Create a new state object. This call involves memory allocation.
+    fn make_state(&self) -> State<K, V>
     where
         K: VarSet,
     {
         State::new(&self.grid_map)
     }
 
+    /// Return a state object. The object is either popped form the internal buffer of allocated.
+    /// **No assumptions can be made about the content of the data containeed in the state's variables**.
     pub fn get(&mut self) -> State<K, V>
     where
         K: VarSet,
@@ -132,23 +152,33 @@ where
         self.buffer.pop_front().unwrap_or_else(|| self.make_state())
     }
 
+    /// Push a state objec to the internal buffer for later reuse.
     pub fn take(&mut self, state: State<K, V>) {
         self.buffer.push_back(state);
     }
 }
 
+/// An ordered collection of state objects, typically representing state at consecutive time steps.
+///
+/// `StateDeque` wraps a [VecDeque], however, unlike [VecDeque] a `StateDeque` has a fixed capacity and
+/// will not grow beyond that. If no more objects can be added to the deque, the "oldest" element will be
+/// dropped or consumed by a [StateFactory]'s internal buffer.
+/// New elements will be added to the end of the deque.
 #[derive(Debug)]
 pub struct StateDeque<K, V> {
     inner: VecDeque<State<K, V>>,
 }
 
 impl<K, V> StateDeque<K, V> {
+    /// Create a new StateDeque with a given fixed capacity.
     pub fn new(capacity: usize) -> StateDeque<K, V> {
         StateDeque {
             inner: VecDeque::<State<K, V>>::with_capacity(capacity),
         }
     }
 
+    /// Add an element to the end of the deque. If the capacity is reached, the oldest element will be droped or
+    /// handed over to the `consumer` for reuse.
     pub fn push<I, M>(&mut self, elem: State<K, V>, consumer: Option<&mut StateFactory<K, V, I, M>>)
     where
         V: Variable<I, M>,
@@ -167,14 +197,17 @@ impl<K, V> StateDeque<K, V> {
         self.inner.push_back(elem);
     }
 
+    /// Number of elements.
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
+    /// Returns true if there are no elements in the deque.
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
+    /// Returns a [VecDeque<&V>] with references to a particular variable of all contained states.
     pub fn get_var(&self, var: K) -> VecDeque<&V>
     where
         K: VarSet,

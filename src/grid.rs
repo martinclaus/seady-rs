@@ -1,9 +1,15 @@
+//! Basic traits and data structures to describe [Grids](`Grid`) and [Grid topologies](`GridTopology`).
+
 use std::rc::Rc;
 
 use crate::field::{cyclic_shift, Arr2D, Field, Ix2, Size2D};
 use crate::mask::Mask;
 use crate::Numeric;
 
+/// Trait defining the interface of grid-like structs.
+///
+/// A grid defines the coordinates of a [`Field`], e.g. the latitude or longitude, and
+/// a mask to flag grid points, e.g. to be inside or outside the domain.
 pub trait Grid<I, M>
 where
     Self: Sized,
@@ -14,45 +20,65 @@ where
     type Coord;
     type MaskContainer;
 
+    /// Return a reference to the coordinate cooresponding to dimension `x`
     fn get_x(&self) -> &Self::Coord;
+    /// Return a reference to the grid spacing in `x` direction
     fn get_dx(&self) -> &Self::Coord;
+    /// Return a reference to the coordinate cooresponding to dimension `y`
     fn get_y(&self) -> &Self::Coord;
+    /// Return a reference to the grid spacing in `y` direction
     fn get_dy(&self) -> &Self::Coord;
+    /// Return a reference to the mask field
     fn get_mask(&self) -> &Self::MaskContainer;
+    /// Return a mutable reference to the mask field
     fn get_mask_mut(&mut self) -> &mut Self::MaskContainer;
+    /// Set the mask field and return a mutable reference to the grid
     fn with_mask(&mut self, mask: Self::MaskContainer) -> &mut Self {
         *self.get_mask_mut() = mask;
         self
     }
+    /// Return the shape of the grid, i.e. the number of grid points along each dimension
     fn size(&self) -> Size2D {
         self.get_mask().size()
     }
 }
 
+/// Defines the relative relation of multiple [Grids](`Grid`) for a curvilinear grid.
+///
+/// For example, the Arakawa C grid consists of four grids, one defining the center of a grid box,
+/// two define the mid-point of the "vertical" and "horizontal" faces and the fourth are the corners
+/// of the grid box.
 pub trait GridTopology<I, M>
 where
     Self::Grid: Grid<I, M>,
     M: Mask,
 {
     type Grid;
+    /// Return an [Rc] smart pointer to the grid box centers
     fn get_center(&self) -> Rc<Self::Grid>;
 
+    /// Return an [Rc] smart pointer to the grid box's "horizontal" faces, i.e. boundaries in `x` direction
     fn get_h_face(&self) -> Rc<Self::Grid>;
 
+    /// Return an [Rc] smart pointer to the grid box's "vertical" faces, i.e. boundaries in `y` direction
     fn get_v_face(&self) -> Rc<Self::Grid>;
 
+    /// Return an [Rc] smart pointer to the grid box's corners
     fn get_corner(&self) -> Rc<Self::Grid>;
 
     // fn cartesian(size: Size2D, x_start: I, y_start: I, dx: I, dy: I) -> Self;
 
+    /// Check if upper vertical face of grid box at position `pos` is inside the domain
     fn is_v_inside(pos: Ix2, center_mask: &<Self::Grid as Grid<I, M>>::MaskContainer) -> bool {
         let jp1 = cyclic_shift(pos[0], 1, center_mask.size().0);
         center_mask[pos].is_inside() && center_mask[[jp1, pos[1]]].is_inside()
     }
+    /// Check if right horizontal face of grid box at position `pos` is inside the domain
     fn is_h_inside(pos: Ix2, center_mask: &<Self::Grid as Grid<I, M>>::MaskContainer) -> bool {
         let ip1 = cyclic_shift(pos[1], 1, center_mask.size().1);
         center_mask[pos].is_inside() && center_mask[[pos[0], ip1]].is_inside()
     }
+    /// Check if upper right corner of grid box at position `pos` is inside the domain
     fn is_corner_inside(pos: Ix2, center_mask: &<Self::Grid as Grid<I, M>>::MaskContainer) -> bool {
         let (len_j, len_i) = center_mask.size();
         let ip1 = cyclic_shift(pos[1], 1, len_i);
@@ -63,15 +89,16 @@ where
             && center_mask[[jp1, pos[1]]].is_inside()
     }
 
+    /// Create a mask field from a mask by evaluating the predicate function.
     fn make_mask(
         base_mask: &<Self::Grid as Grid<I, M>>::MaskContainer,
-        is_inside_strategy: fn(Ix2, &<Self::Grid as Grid<I, M>>::MaskContainer) -> bool,
+        predicate: fn(Ix2, &<Self::Grid as Grid<I, M>>::MaskContainer) -> bool,
     ) -> <Self::Grid as Grid<I, M>>::MaskContainer {
         let mut mask =
             <Self::Grid as Grid<I, M>>::MaskContainer::full(M::inside(), base_mask.size());
         for j in 0..base_mask.size().0 {
             for i in 0..base_mask.size().1 {
-                mask[[j, i]] = match is_inside_strategy([j, i], base_mask) {
+                mask[[j, i]] = match predicate([j, i], base_mask) {
                     true => M::inside(),
                     false => M::outside(),
                 };
@@ -81,6 +108,7 @@ where
     }
 }
 
+/// 2D Grid
 #[derive(Clone, Debug)]
 pub struct Grid2D<I, M> {
     x: Arr2D<I>,
@@ -128,6 +156,7 @@ where
     I: Numeric,
     M: Mask,
 {
+    /// Return a Cartesian grid, i.e. a rectangular grid where the grid points are evenly spaced.
     pub fn cartesian(size: Size2D, x_start: I, y_start: I, dx: I, dy: I) -> Self {
         Grid2D {
             x: {
@@ -167,6 +196,7 @@ where
     }
 }
 
+/// Grid topology for curvilinear grids.
 #[derive(Debug)]
 pub struct StaggeredGrid<G> {
     center: Rc<G>,
@@ -204,6 +234,7 @@ where
     I: Numeric,
     M: Mask,
 {
+    /// Return the topology of a Cartesian grid
     pub fn cartesian(size: Size2D, x_start: I, y_start: I, dx: I, dy: I) -> Self {
         let x_shift = x_start + dx * 0.5;
         let y_shift = y_start + dy * 0.5;

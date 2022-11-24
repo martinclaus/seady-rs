@@ -1,3 +1,4 @@
+//! Provides variables, i.e. [`Fields`](`Field`) holding the actual data together with an [`Grid`] containing meta-data.
 use std::ops::{Add, AddAssign};
 use std::rc::Rc;
 
@@ -6,6 +7,7 @@ use crate::grid::Grid;
 use crate::mask::Mask;
 use crate::Numeric;
 
+/// A variable consists of a data [`Field`] object [`Self::Data`] and a [`Grid`] object [`Self::Grid`].
 pub trait Variable<I, M>
 where
     Self::Data: Field<I>,
@@ -15,15 +17,20 @@ where
     type Data;
     type Grid;
 
+    /// Construct a variable defined on `grid` with zeroed out data.
     fn zeros(grid: &Rc<Self::Grid>) -> Self;
 
+    /// Borrow the data field
     fn get_data(&self) -> &Self::Data;
 
+    /// Mutably borrow reference to the data field
     fn get_data_mut(&mut self) -> &mut Self::Data;
 
+    /// Return a reference to the grid on which the variable is defined
     fn get_grid(&self) -> &Rc<Self::Grid>;
 }
 
+/// Basic Variable type
 #[derive(Debug)]
 pub struct Var<CD, G> {
     data: CD,
