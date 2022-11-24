@@ -14,13 +14,13 @@ pub trait VarKey: Copy + fixed_map::key::Key + std::fmt::Debug {}
 
 /// Prognostic variables of the shallow water equations
 #[derive(Copy, Clone, Key, Debug)]
-pub enum SWMVars {
+pub enum SwmVars {
     U,
     V,
     ETA,
 }
 
-impl VarKey for SWMVars {}
+impl VarKey for SwmVars {}
 
 /// State of a system.
 ///
