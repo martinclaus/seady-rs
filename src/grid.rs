@@ -1,7 +1,5 @@
 //! Basic traits and data structures to describe [Grids](`Grid`).
 
-use std::rc::Rc;
-
 use crate::field::{ArrND, Field, Shape};
 use crate::mask::Mask;
 use crate::Numeric;

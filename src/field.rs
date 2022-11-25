@@ -2,10 +2,7 @@
 //! and the [`Field`] trait which must be implemented by any type that shall be used to store
 //! data of model variables.
 
-use std::{
-    fmt::Display,
-    ops::{Add, AddAssign, Index, IndexMut, Range, RangeFrom},
-};
+use std::ops::{Add, AddAssign, Index, IndexMut, RangeFrom};
 
 /// Type alias for index tuples
 pub type Ix<const ND: usize> = [usize; ND];

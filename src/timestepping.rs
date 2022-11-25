@@ -14,8 +14,8 @@ use std::marker::PhantomData;
 
 use crate::field::Ix;
 use crate::mask::Mask;
+use crate::variable::Variable;
 use crate::Numeric;
-use crate::{field::Field, variable::Variable};
 
 /// Coefficients of the 2nd order Adams-Bashforth scheme
 const AB2_FAC: [f64; 2] = [-1f64 / 2f64, 3f64 / 2f64];

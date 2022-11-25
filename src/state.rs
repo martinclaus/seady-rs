@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::{grid::Grid, mask::Mask, variable::Variable};
+use crate::{mask::Mask, variable::Variable};
 
 /// Marker trait for Variable keys of [State] collections
 pub trait VarKey: Copy + fixed_map::key::Key + std::fmt::Debug {}
