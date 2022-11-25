@@ -14,10 +14,10 @@ use std::{fmt::Display, ops::Mul};
 /// To create a domain mask based on the Arr2D type, where the rim of the
 /// domain is flagged as closed, you can do the following:
 /// ```
-/// use seady::field::{ArrND, Field, shape};
+/// use seady::field::{ArrND, Field};
 /// use seady::mask::{DomainMask, Mask};
 ///
-/// let mut mask = ArrND::full(DomainMask::outside(), shape([5, 10]));
+/// let mut mask = ArrND::full(DomainMask::outside(), [5, 10]);
 /// for j in 1..4 {
 ///     for i in 1..9 {
 ///         mask[[j, i]] = DomainMask::inside()

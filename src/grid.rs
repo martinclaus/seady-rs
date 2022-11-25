@@ -267,21 +267,13 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        field::shape,
-        mask::{DomainMask, Mask},
-    };
+    use crate::mask::{DomainMask, Mask};
 
     use super::{Grid, GridND};
 
     #[test]
     fn cartesian_grid_creation_set_correct_coords() {
-        let g = GridND::cartesian(
-            shape([3, 3]),
-            [1f64, 0f64],
-            [2.0, 3.0],
-            DomainMask::inside(),
-        );
+        let g = GridND::cartesian([3, 3], [1f64, 0f64], [2.0, 3.0], DomainMask::inside());
 
         assert_eq!(g.get_coord(1)[[0, 0]], 0.0);
         assert_eq!(g.get_coord(1)[[1, 0]], 0.0);
@@ -294,12 +286,7 @@ mod test {
 
     #[test]
     fn cartesian_grid_creation_set_correct_delta() {
-        let g = GridND::cartesian(
-            shape([3, 3]),
-            [1f64, 0f64],
-            [2.0, 3.0],
-            DomainMask::inside(),
-        );
+        let g = GridND::cartesian([3, 3], [1f64, 0f64], [2.0, 3.0], DomainMask::inside());
 
         assert_eq!(g.get_delta(0)[[1, 1]], 2.0);
         assert_eq!(g.get_delta(1)[[1, 1]], 3.0);

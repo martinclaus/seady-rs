@@ -7,10 +7,6 @@ use std::ops::{Add, AddAssign, Index, IndexMut, RangeFrom};
 /// Type alias for index tuples
 pub type Ix<const ND: usize> = [usize; ND];
 
-pub fn shape<const ND: usize>(shape: [usize; ND]) -> Shape<ND> {
-    Shape(shape)
-}
-
 /// Array shape
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shape<const ND: usize>(Ix<ND>);
@@ -152,8 +148,7 @@ where
 /// # Examples
 /// Create an array, filled with a value.
 /// ```
-/// use seady::field::{ArrND, shape};
-/// use seady::field::Field;
+/// use seady::field::{ArrND, Field};
 ///
 /// let arr = ArrND::full(1f64, [2, 2]);
 ///
@@ -282,15 +277,14 @@ impl<const ND: usize, I: Copy> Field<ND, I> for ArrND<ND, I> {
 
 #[cfg(test)]
 mod test {
-    use crate::field::IntoShape;
+    use crate::field::{IntoShape, Shape};
 
-    use super::{shape, ArrND, Field};
+    use super::{ArrND, Field};
 
     #[test]
     fn new_shape_from_array() {
-        let shape = shape([2, 3]);
-        assert_eq!(shape[0], 2);
-        assert_eq!(shape[1], 3);
+        let shape = [2, 3];
+        assert_eq!(shape.into_shape(), Shape([2, 3]));
     }
 
     #[test]
@@ -344,7 +338,7 @@ mod test {
 
     #[test]
     fn shape_size_is_correct() {
-        assert_eq!(shape([2, 3]).size(), 6)
+        assert_eq!(Shape([2, 3]).size(), 6)
     }
 
     #[test]
