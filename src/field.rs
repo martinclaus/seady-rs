@@ -99,6 +99,30 @@ impl<const ND: usize> Iterator for NDIndexer<ND> {
     }
 }
 
+/// Trait to allow for conversion into a Shape type
+pub trait IntoShape<const ND: usize> {
+    fn into_shape(self) -> Shape<ND>;
+}
+
+impl<const ND: usize> IntoShape<ND> for Shape<ND> {
+    fn into_shape(self) -> Shape<ND> {
+        self
+    }
+}
+
+impl<const ND: usize> IntoShape<ND> for [usize; ND] {
+    fn into_shape(self) -> Shape<ND> {
+        Shape(self)
+    }
+}
+
+impl<const ND: usize> IntoShape<ND> for &[usize] {
+    fn into_shape(self) -> Shape<ND> {
+        let shape = self.try_into().expect("Dimension should match");
+        Shape(shape)
+    }
+}
+
 pub fn cyclic_shift(idx: usize, shift: isize, len: usize) -> usize {
     let len = len as isize;
     match (idx as isize) + shift {
@@ -114,7 +138,7 @@ where
     Self: Sized + Index<Ix<ND>, Output = I> + IndexMut<Ix<ND>, Output = I>,
 {
     /// Create a new field with all elements set to a constant value.
-    fn full(item: I, size: impl AsRef<Ix<ND>>) -> Self;
+    fn full(item: I, shape: impl IntoShape<ND>) -> Self;
 
     /// Return the shape of the array.
     fn shape(&self) -> Shape<ND>;
@@ -131,7 +155,7 @@ where
 /// use seady::field::{ArrND, shape};
 /// use seady::field::Field;
 ///
-/// let arr = ArrND::full(1f64, shape([2, 2]));
+/// let arr = ArrND::full(1f64, [2, 2]);
 ///
 /// assert_eq!(arr[[0, 0]], 1.0);
 /// assert_eq!(arr[[1, 0]], 1.0);
@@ -210,8 +234,8 @@ impl<const ND: usize, I: AddAssign + Copy> AddAssign for ArrND<ND, I> {
 }
 
 impl<const ND: usize, I: Copy> Field<ND, I> for ArrND<ND, I> {
-    fn full(item: I, shape: impl AsRef<Ix<ND>>) -> Self {
-        let shape = Shape(*shape.as_ref());
+    fn full(item: I, shape: impl IntoShape<ND>) -> Self {
+        let shape = shape.into_shape();
         ArrND {
             shape,
             data: vec![item; shape.size()].into_boxed_slice(),
@@ -225,20 +249,19 @@ impl<const ND: usize, I: Copy> Field<ND, I> for ArrND<ND, I> {
 
 // impl<const ND: usize, I: Display + Copy> Display for ArrND<ND, I> {
 //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         const NDM1: usize = ND - 1;
 //         if ND > 1 {
 //             let shape = self.shape;
 //             let s = (0..shape[0])
 //                 .map(|i| {
-//                     let data = self.data
-//                         [i * shape[1..].iter().product()..(i + 1) * shape[1..].iter().product()]
+//                     let data = self.data[i * IntoShape::<ND>::into_shape(&shape[1..]).size()
+//                         ..(i + 1) * IntoShape::<ND>::into_shape(&shape[1..]).size()]
 //                         .iter()
 //                         .map(|i| *i)
 //                         .collect::<Vec<I>>()
 //                         .into_boxed_slice();
 //                     let slice = ArrND {
 //                         data,
-//                         shape: shape[1..],
+//                         shape: shape[1..].into_shape(),
 //                     };
 //                     format!("[{}]", slice)
 //                 })
@@ -259,6 +282,8 @@ impl<const ND: usize, I: Copy> Field<ND, I> for ArrND<ND, I> {
 
 #[cfg(test)]
 mod test {
+    use crate::field::IntoShape;
+
     use super::{shape, ArrND, Field};
 
     #[test]
@@ -319,15 +344,15 @@ mod test {
 
     #[test]
     fn shape_size_is_correct() {
-        assert_eq!(shape([2, 2]).size(), 4)
+        assert_eq!(shape([2, 3]).size(), 6)
     }
 
     #[test]
     fn create_arrnd() {
-        let shape = shape([2, 2]);
+        let shape = [2, 2];
 
         let arr = ArrND::full(0f64, shape);
-        assert_eq!(arr.shape, shape);
+        assert_eq!(arr.shape, shape.into_shape());
         assert_eq!(arr[[0, 0]], 0f64);
         assert_eq!(arr[[0, 1]], 0f64);
         assert_eq!(arr[[1, 0]], 0f64);

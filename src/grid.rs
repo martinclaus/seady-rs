@@ -1,6 +1,6 @@
 //! Basic traits and data structures to describe [Grids](`Grid`).
 
-use crate::field::{ArrND, Field, Shape};
+use crate::field::{ArrND, Field, IntoShape, Shape};
 use crate::mask::Mask;
 use crate::Numeric;
 
@@ -156,17 +156,23 @@ where
     M: Mask,
 {
     /// Return a Cartesian grid, i.e. a rectangular grid where the grid points are evenly spaced.
-    pub fn cartesian(size: Shape<ND>, start: [I; ND], delta: [I; ND], inside_domain: M) -> Self
+    pub fn cartesian(
+        shape: impl IntoShape<ND>,
+        start: [I; ND],
+        delta: [I; ND],
+        inside_domain: M,
+    ) -> Self
     where
         I: std::fmt::Debug,
     {
+        let shape = shape.into_shape();
         GridND {
             coords: (0..ND)
                 .map(|dim| {
-                    let mut res = ArrND::full(I::zero(), size);
+                    let mut res = ArrND::full(I::zero(), shape);
                     let start = start[dim];
                     let delta = delta[dim];
-                    for ind in size {
+                    for ind in shape {
                         res[ind] = start + delta * (ind[dim] as f64)
                     }
                     res
@@ -174,13 +180,13 @@ where
                 .collect::<Vec<_>>()
                 .try_into()
                 .expect("Number of dimensions must match"), // {
-            delta: delta.map(|delta| ArrND::full(delta, size)),
+            delta: delta.map(|delta| ArrND::full(delta, shape)),
             mask: {
-                let mut res = ArrND::full(inside_domain, size);
-                size.iter().for_each(|idx| {
+                let mut res = ArrND::full(inside_domain, shape);
+                shape.iter().for_each(|idx| {
                     res[idx] = if idx
                         .iter()
-                        .zip(size.as_ref().iter())
+                        .zip(shape.as_ref().iter())
                         .any(|(&i, &ni)| (i == ni - 1) | (i == 0))
                     {
                         M::outside()
