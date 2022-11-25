@@ -12,6 +12,7 @@
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 
+use crate::field::Ix;
 use crate::mask::Mask;
 use crate::Numeric;
 use crate::{field::Field, variable::Variable};
@@ -23,11 +24,11 @@ const AB2_FAC: [f64; 2] = [-1f64 / 2f64, 3f64 / 2f64];
 const AB3_FAC: [f64; 3] = [5f64 / 12f64, -16f64 / 12f64, 23f64 / 12f64];
 
 /// Provides the necessary interface for integration strategies.
-pub trait Integrator<V, I, M> {
+pub trait Integrator<const ND: usize, V, I, M> {
     /// Take (previous) evaluations of the right-hand side of the PDE and compute the
     /// numerical approximation of the derivative multiplied by the step size.
     /// The computation is at a single grid point.
-    fn call(past_rhs: &VecDeque<&V>, step: I, idx: [usize; 2]) -> I;
+    fn call(past_rhs: &VecDeque<&V>, step: I, idx: Ix<ND>) -> I;
 }
 
 /// Generic integrator that statically dispatch about the integration strategy.
@@ -36,38 +37,35 @@ pub struct Integrate<I> {
 }
 
 impl<IS> Integrate<IS> {
-    /// Compute the change from one timestep to the next.
-    pub fn compute_inc<V: Variable<I, M>, I, M: Mask>(
-        past_state: VecDeque<&V>,
-        step: I,
-        out: &mut V,
-    ) where
-        IS: Integrator<V, I, M>,
-        V: Variable<I, M>,
-        I: Copy,
-        M: Mask,
-    {
-        let d = out.get_data_mut();
-        let (ny, nx) = d.size();
+    //// Compute the change from one timestep to the next.
+    // pub fn compute_inc<const ND: usize, V, I, M>(past_state: VecDeque<&V>, step: I, out: &mut V)
+    // where
+    //     IS: Integrator<ND, V, I, M>,
+    //     // I: Copy,
+    //     M: Mask,
+    //     V: Variable<ND, I, M>,
+    // {
+    //     let d = out.get_data_mut();
+    //     let shape = d.shape();
 
-        for j in 0..ny {
-            for i in 0..nx {
-                d[[j, i]] = IS::call(&past_state, step, [j, i]);
-            }
-        }
-    }
+    //     for j in 0..ny {
+    //         for i in 0..nx {
+    //             d[[j, i]] = IS::call(&past_state, step, [j, i]);
+    //         }
+    //     }
+    // }
 }
 
 /// Euler forward scheme.
 pub struct Ef;
 
-impl<V, I, M> Integrator<V, I, M> for Ef
+impl<const ND: usize, V, I, M> Integrator<ND, V, I, M> for Ef
 where
-    V: Variable<I, M>,
+    V: Variable<ND, I, M>,
     M: Mask,
     I: Numeric,
 {
-    fn call(past_state: &VecDeque<&V>, step: I, idx: [usize; 2]) -> I {
+    fn call(past_state: &VecDeque<&V>, step: I, idx: Ix<ND>) -> I {
         past_state[0].get_data()[idx] * step
     }
 }
@@ -75,13 +73,13 @@ where
 /// Adams-Bashforth 2nd order scheme
 pub struct Ab2;
 
-impl<V, I, M> Integrator<V, I, M> for Ab2
+impl<const ND: usize, V, I, M> Integrator<ND, V, I, M> for Ab2
 where
-    V: Variable<I, M>,
+    V: Variable<ND, I, M>,
     M: Mask,
     I: Numeric,
 {
-    fn call(past_state: &VecDeque<&V>, step: I, idx: [usize; 2]) -> I {
+    fn call(past_state: &VecDeque<&V>, step: I, idx: Ix<ND>) -> I {
         if past_state.len() < 2 {
             Ef::call(past_state, step, idx)
         } else {
@@ -95,13 +93,13 @@ where
 /// Adams-Bashforth 3rd order scheme
 pub struct Ab3;
 
-impl<V, I, M> Integrator<V, I, M> for Ab3
+impl<const ND: usize, V, I, M> Integrator<ND, V, I, M> for Ab3
 where
-    V: Variable<I, M>,
+    V: Variable<ND, I, M>,
     M: Mask,
     I: Numeric,
 {
-    fn call(past_state: &VecDeque<&V>, step: I, idx: [usize; 2]) -> I {
+    fn call(past_state: &VecDeque<&V>, step: I, idx: Ix<ND>) -> I {
         if past_state.len() < 3 {
             Ab2::call(past_state, step, idx)
         } else {

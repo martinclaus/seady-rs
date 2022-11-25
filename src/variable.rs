@@ -8,10 +8,10 @@ use crate::mask::Mask;
 use crate::Numeric;
 
 /// A variable consists of a data [`Field`] object [`Self::Data`] and a [`Grid`] object [`Self::Grid`].
-pub trait Variable<I, M>
+pub trait Variable<const ND: usize, I, M>
 where
-    Self::Data: Field<I>,
-    Self::Grid: Grid<I, M>,
+    Self::Data: Field<ND, I>,
+    Self::Grid: Grid<ND, I, M>,
     M: Mask,
 {
     type Data;
@@ -69,10 +69,10 @@ where
     }
 }
 
-impl<CD, G, I, M> Variable<I, M> for Var<CD, G>
+impl<const ND: usize, CD, G, I, M> Variable<ND, I, M> for Var<CD, G>
 where
-    CD: Field<I>,
-    G: Grid<I, M>,
+    CD: Field<ND, I>,
+    G: Grid<ND, I, M>,
     I: Numeric,
     M: Mask,
 {
