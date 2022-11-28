@@ -12,7 +12,7 @@
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 
-use crate::field::Ix;
+use crate::field::{Field, Ix};
 use crate::mask::Mask;
 use crate::variable::Variable;
 use crate::Numeric;
@@ -37,23 +37,21 @@ pub struct Integrate<I> {
 }
 
 impl<IS> Integrate<IS> {
-    //// Compute the change from one timestep to the next.
-    // pub fn compute_inc<const ND: usize, V, I, M>(past_state: VecDeque<&V>, step: I, out: &mut V)
-    // where
-    //     IS: Integrator<ND, V, I, M>,
-    //     // I: Copy,
-    //     M: Mask,
-    //     V: Variable<ND, I, M>,
-    // {
-    //     let d = out.get_data_mut();
-    //     let shape = d.shape();
+    /// Compute the change from one timestep to the next.
+    pub fn compute_inc<const ND: usize, V, I, M>(past_state: VecDeque<&V>, step: I, out: &mut V)
+    where
+        IS: Integrator<ND, V, I, M>,
+        I: Copy,
+        M: Mask,
+        V: Variable<ND, I, M>,
+    {
+        let d = out.get_data_mut();
+        let shape = d.shape();
 
-    //     for j in 0..ny {
-    //         for i in 0..nx {
-    //             d[[j, i]] = IS::call(&past_state, step, [j, i]);
-    //         }
-    //     }
-    // }
+        for idx in shape {
+            d[idx] = IS::call(&past_state, step, idx);
+        }
+    }
 }
 
 /// Euler forward scheme.
