@@ -2,7 +2,10 @@
 //! and the [`Field`] trait which must be implemented by any type that shall be used to store
 //! data of model variables.
 
-use std::ops::{Add, AddAssign, Index, IndexMut, RangeFrom};
+use std::{
+    fmt::Display,
+    ops::{Add, AddAssign, Index, IndexMut, RangeFrom},
+};
 
 /// Type alias for index tuples
 pub type Ix<const ND: usize> = [usize; ND];
@@ -242,38 +245,57 @@ impl<const ND: usize, I: Copy> Field<ND, I> for ArrND<ND, I> {
     }
 }
 
-// impl<const ND: usize, I: Display + Copy> Display for ArrND<ND, I> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         if ND > 1 {
-//             let shape = self.shape;
-//             let s = (0..shape[0])
-//                 .map(|i| {
-//                     let data = self.data[i * IntoShape::<ND>::into_shape(&shape[1..]).size()
-//                         ..(i + 1) * IntoShape::<ND>::into_shape(&shape[1..]).size()]
-//                         .iter()
-//                         .map(|i| *i)
-//                         .collect::<Vec<I>>()
-//                         .into_boxed_slice();
-//                     let slice = ArrND {
-//                         data,
-//                         shape: shape[1..].into_shape(),
-//                     };
-//                     format!("[{}]", slice)
-//                 })
-//                 .collect::<Vec<_>>()
-//                 .join(",\n");
-//             write!(f, "[{}]", s)
-//         } else {
-//             let s = &self
-//                 .data
-//                 .iter()
-//                 .map(|i| format!("{}", i))
-//                 .collect::<Vec<_>>()
-//                 .join(",");
-//             write!(f, "[{}]", s)
-//         }
-//     }
-// }
+impl<const ND: usize, I: Display + Copy> Display for ArrND<ND, I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let slice = ArrSlice {
+            data: &self.data[..],
+            shape: &self.shape.0[..],
+            fixed_dims: 0,
+        };
+        write!(f, "{}", slice)
+    }
+}
+
+struct ArrSlice<'a, I> {
+    data: &'a [I],
+    shape: &'a [usize],
+    fixed_dims: usize,
+}
+
+impl<'a, I> Display for ArrSlice<'a, I>
+where
+    I: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.shape.len() == 1 {
+            write!(
+                f,
+                "[{}]",
+                self.data
+                    .iter()
+                    .map(|i| format!("{}", i))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            )?
+        } else {
+            write!(f, "[")?;
+            for i in 0..self.shape[0] {
+                let size: usize = self.shape[1..].iter().product();
+                let slice = ArrSlice {
+                    data: &self.data[i * size..(i + 1) * size],
+                    shape: &self.shape[1..],
+                    fixed_dims: self.fixed_dims + 1,
+                };
+                write!(f, "{}", slice)?;
+                if i != self.shape[0] - 1 {
+                    write!(f, ",\n")?
+                }
+            }
+            write!(f, "]")?;
+        }
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -353,15 +375,15 @@ mod test {
         assert_eq!(arr[[1, 1]], 0f64);
     }
 
-    // #[test]
-    // fn display_output() {
-    //     let mut arr = ArrND::full(1f64, (3, 5));
-    //     arr[[1, 2]] = 0f64;
-    //     assert_eq!(
-    //         format!("{}", arr),
-    //         "[[1,1,1,1,1],\n [1,1,0,1,1],\n [1,1,1,1,1]]"
-    //     );
-    // }
+    #[test]
+    fn display_output() {
+        let mut arr = ArrND::full(1f64, [2, 3, 2]);
+        arr[[1, 2, 1]] = 0f64;
+        assert_eq!(
+            format!("{}", arr),
+            "[[[1,1],\n[1,1],\n[1,1]],\n[[1,1],\n[1,1],\n[1,0]]]"
+        );
+    }
 
     #[test]
     fn test_cyclic_shift() {
