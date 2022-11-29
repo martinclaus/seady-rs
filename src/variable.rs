@@ -4,18 +4,12 @@ use std::rc::Rc;
 
 use crate::field::Field;
 use crate::grid::Grid;
-use crate::mask::Mask;
 use crate::Numeric;
 
 /// A variable consists of a data [`Field`] object [`Self::Data`] and a [`Grid`] object [`Self::Grid`].
-pub trait Variable<const ND: usize, I, M>
-where
-    Self::Data: Field<ND, I>,
-    Self::Grid: Grid<ND, I, M>,
-    M: Mask,
-{
-    type Data;
-    type Grid;
+pub trait Variable<const ND: usize> {
+    type Data: Field<ND>;
+    type Grid: Grid<ND, Coord = Self::Data>;
 
     /// Construct a variable defined on `grid` with zeroed out data.
     fn zeros(grid: &Rc<Self::Grid>) -> Self;
@@ -69,19 +63,18 @@ where
     }
 }
 
-impl<const ND: usize, CD, G, I, M> Variable<ND, I, M> for Var<CD, G>
+impl<const ND: usize, CD, G> Variable<ND> for Var<CD, G>
 where
-    CD: Field<ND, I>,
-    G: Grid<ND, I, M>,
-    I: Numeric,
-    M: Mask,
+    CD: Field<ND>,
+    G: Grid<ND, Coord = CD>,
+    CD::Item: Numeric,
 {
     type Data = CD;
     type Grid = G;
 
     fn zeros(grid: &Rc<Self::Grid>) -> Self {
         Self {
-            data: Self::Data::full(I::zero(), grid.size()),
+            data: Self::Data::full(<Self::Data as Field<ND>>::Item::zero(), grid.size()),
             grid: Rc::clone(grid),
         }
     }

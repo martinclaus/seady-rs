@@ -132,12 +132,13 @@ pub fn cyclic_shift(idx: usize, shift: isize, len: usize) -> usize {
 }
 
 /// Trait for array backends.
-pub trait Field<const ND: usize, I>
+pub trait Field<const ND: usize>
 where
-    Self: Sized + Index<Ix<ND>, Output = I> + IndexMut<Ix<ND>, Output = I>,
+    Self: Sized + Index<Ix<ND>, Output = Self::Item> + IndexMut<Ix<ND>, Output = Self::Item>,
 {
+    type Item;
     /// Create a new field with all elements set to a constant value.
-    fn full(item: I, shape: impl IntoShape<ND>) -> Self;
+    fn full(item: Self::Item, shape: impl IntoShape<ND>) -> Self;
 
     /// Return the shape of the array.
     fn shape(&self) -> Shape<ND>;
@@ -231,7 +232,9 @@ impl<const ND: usize, I: AddAssign + Copy> AddAssign for ArrND<ND, I> {
     }
 }
 
-impl<const ND: usize, I: Copy> Field<ND, I> for ArrND<ND, I> {
+impl<const ND: usize, I: Copy> Field<ND> for ArrND<ND, I> {
+    type Item = I;
+
     fn full(item: I, shape: impl IntoShape<ND>) -> Self {
         let shape = shape.into_shape();
         ArrND {

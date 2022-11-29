@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::{mask::Mask, variable::Variable};
+use crate::variable::Variable;
 
 /// Marker trait for Variable keys of [State] collections
 pub trait VarKey: Copy + fixed_map::key::Key + std::fmt::Debug {}
@@ -82,10 +82,9 @@ where
     K: VarKey,
 {
     /// Create a new state from a grid mapping.
-    pub fn new<const ND: usize, I, M, G>(grid_map: &GridMap<K, G>) -> Self
+    pub fn new<const ND: usize>(grid_map: &GridMap<K, V::Grid>) -> Self
     where
-        V: Variable<ND, I, M, Grid = G>,
-        M: Mask,
+        V: Variable<ND>,
     {
         State(grid_map.iter().map(|(k, g)| (k, V::zeros(g))).collect())
     }
@@ -97,25 +96,24 @@ where
 /// Additionally, it provides a buffer to store used state objects for later
 /// reuse to reduce the number of memory allocations.
 #[derive(Debug)]
-pub struct StateFactory<K, V, G>
+pub struct StateFactory<const ND: usize, K, V>
 where
-    //     V: Variable<I, M>,
-    //     M: Mask,
+    V: Variable<ND>,
     K: VarKey,
 {
-    grid_map: GridMap<K, G>,
+    grid_map: GridMap<K, V::Grid>,
     buffer: VecDeque<State<K, V>>,
 }
 
-impl<K, V, G> StateFactory<K, V, G>
+impl<const ND: usize, K, V> StateFactory<ND, K, V>
 where
+    V: Variable<ND>,
     K: VarKey,
 {
     /// Create a new StateFactory object
-    pub fn new<const ND: usize, I, M>(grid_map: impl IntoIterator<Item = (K, Rc<G>)>) -> Self
+    pub fn new(grid_map: impl IntoIterator<Item = (K, Rc<V::Grid>)>) -> Self
     where
-        V: Variable<ND, I, M, Grid = G>,
-        M: Mask,
+        V: Variable<ND>,
     {
         Self {
             grid_map: grid_map.into_iter().collect(),
@@ -132,21 +130,13 @@ where
     }
 
     /// Create a new state object. This call involves memory allocation.
-    fn make_state<const ND: usize, I, M>(&self) -> State<K, V>
-    where
-        V: Variable<ND, I, M, Grid = G>,
-        M: Mask,
-    {
+    fn make_state(&self) -> State<K, V> {
         State::new(&self.grid_map)
     }
 
     /// Return a state object. The object is either popped form the internal buffer of allocated.
     /// **No assumptions can be made about the content of the data contained in the state's variables**.
-    pub fn get<const ND: usize, I, M>(&mut self) -> State<K, V>
-    where
-        V: Variable<ND, I, M, Grid = G>,
-        M: Mask,
-    {
+    pub fn get(&mut self) -> State<K, V> {
         self.buffer.pop_front().unwrap_or_else(|| self.make_state())
     }
 
@@ -178,14 +168,12 @@ where
 
     /// Add an element to the end of the deque. If the capacity is reached, the oldest element will be droped or
     /// handed over to the `consumer` for reuse.
-    pub fn push<const ND: usize, I, M>(
+    pub fn push<const ND: usize>(
         &mut self,
         elem: State<K, V>,
-        consumer: Option<&mut StateFactory<K, V, <V as Variable<ND, I, M>>::Grid>>,
+        consumer: Option<&mut StateFactory<ND, K, V>>,
     ) where
-        V: Variable<ND, I, M>,
-        M: Mask,
-        K: Copy,
+        V: Variable<ND>,
     {
         // buffer full
         if self.0.len() == self.0.capacity() {

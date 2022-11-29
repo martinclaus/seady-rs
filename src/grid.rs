@@ -8,15 +8,13 @@ use crate::Numeric;
 ///
 /// A grid defines the coordinates of a [`Field`], e.g. the latitude or longitude, and
 /// a mask to flag grid points, e.g. to be inside or outside the domain.
-pub trait Grid<const ND: usize, I, M>
+pub trait Grid<const ND: usize>
 where
     Self: Sized,
-    Self::Coord: Field<ND, I>,
-    Self::MaskContainer: Field<ND, M>,
-    M: Mask,
 {
-    type Coord;
-    type MaskContainer;
+    type MaskValue: Mask;
+    type Coord: Field<ND>;
+    type MaskContainer: Field<ND, Item = Self::MaskValue>;
 
     /// Return a reference to the coordinate of the corresponding dimension
     fn get_coord(&self, dim: usize) -> &Self::Coord;
@@ -123,11 +121,12 @@ pub struct GridND<const ND: usize, I, M> {
     mask: ArrND<ND, M>,
 }
 
-impl<const ND: usize, I, M> Grid<ND, I, M> for GridND<ND, I, M>
+impl<const ND: usize, I, M> Grid<ND> for GridND<ND, I, M>
 where
     I: Copy,
     M: Mask,
 {
+    type MaskValue = M;
     type Coord = ArrND<ND, I>;
     type MaskContainer = ArrND<ND, M>;
 
