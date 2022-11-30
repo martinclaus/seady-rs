@@ -14,6 +14,7 @@ use std::ops::{Add, Div, Mul, Sub};
 /// that we can do number crunching with this type.
 pub trait Numeric:
     Copy
+    + std::fmt::Debug
     + Add<Output = Self>
     + Mul<Output = Self>
     + Mul<Output = Self>
