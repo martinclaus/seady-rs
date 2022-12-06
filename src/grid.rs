@@ -27,9 +27,8 @@ where
     /// Return a mutable reference to the mask field
     fn get_mask_mut(&mut self) -> &mut Self::MaskContainer;
     /// Set the mask field and return a mutable reference to the grid
-    fn with_mask(&mut self, mask: Self::MaskContainer) -> &mut Self {
+    fn set_mask(&mut self, mask: Self::MaskContainer) {
         *self.get_mask_mut() = mask;
-        self
     }
     /// Return the shape of the grid, i.e. the number of grid points along each dimension
     fn size(&self) -> Shape<ND> {
@@ -58,8 +57,13 @@ pub trait GridTopology<const ND: usize> {
         pos: Ix<ND>,
         dim: usize,
         center_mask: &<Self::Grid as Grid<ND>>::MaskContainer,
+        cyclic_dims: usize,
     ) -> bool {
-        let ip1 = cyclic_shift(pos[dim], 1, center_mask.shape()[0]);
+        let ip1 = if dim >= (ND - cyclic_dims) {
+            cyclic_shift(pos[dim], 1, center_mask.shape()[0])
+        } else {
+            pos[dim]
+        };
         let mut new_pos = pos.clone();
         new_pos[dim] = ip1;
         center_mask[pos].is_inside() && center_mask[new_pos].is_inside()
@@ -68,17 +72,18 @@ pub trait GridTopology<const ND: usize> {
     fn is_corner_inside(
         pos: Ix<ND>,
         center_mask: &<Self::Grid as Grid<ND>>::MaskContainer,
+        cyclic_dims: usize,
     ) -> bool {
         let shape = center_mask.shape();
 
-        // All neighboring grid boxes of a corned are obtained by iterating through all possible
+        // All neighboring grid boxes of a corner are obtained by iterating through all possible
         // values of a bit mask of length ND. If the bit is set, the index is inreased by one, adhering
-        // to cyclic boundary conditions.
+        // to cyclic boundary conditions for the second right-most dimensions.
         (0..((1 as usize) << ND))
             .map(|i| {
                 let mut idx = pos.clone();
                 for n in 0..ND {
-                    if (i & (1 << n)) != 0 {
+                    if ((i & (1 << n)) != 0) & (n >= ND - cyclic_dims) {
                         idx[n] = cyclic_shift(pos[n], 1, shape[n])
                     }
                 }
@@ -222,55 +227,181 @@ where
     }
 }
 
-impl<const ND: usize, I, M> StaggeredGrid<ND, GridND<ND, I, M>>
+/// Builder for `StaggeregGrid` types
+pub struct StaggeredGridBuilder<const ND: usize, G>
 where
-    I: Numeric,
-    M: Mask + std::fmt::Debug,
+    G: Grid<ND>,
 {
-    /// Return the topology of a Cartesian grid
-    pub fn cartesian(
-        shape: impl IntoShape<ND>,
-        start: [I; ND],
-        delta: [I; ND],
-        inside_domain: M,
-    ) -> Self {
-        let shape = shape.into_shape();
-        let center = Rc::new(GridND::cartesian(shape, start, delta, inside_domain));
+    shape: Shape<ND>,
+    center_coords: Vec<G::Coord>,
+    center_delta: Vec<G::Coord>,
+    center_mask: Option<G::MaskContainer>,
+}
 
-        let face = (0..ND)
-            .map(|ndim| {
-                let mut this_start = start.clone();
-                this_start[ndim] = this_start[ndim] + delta[ndim] * 0.5;
-                let mut grid = GridND::cartesian(shape, this_start, delta, inside_domain);
-                *grid.get_mask_mut() = Self::make_mask(center.get_mask(), |pos, mask| {
-                    Self::is_face_inside(pos, ndim, mask)
-                });
-                Rc::new(grid)
-            })
-            .collect::<Vec<_>>()
-            .try_into()
-            .expect("Should coerce to array");
-
-        let corner = Rc::new({
-            let this_start = start
-                .iter()
-                .zip(delta)
-                .map(|(x, dx)| *x + dx * 0.5)
-                .collect::<Vec<_>>()
-                .try_into()
-                .expect("Should coerce to array");
-            let mut grid = GridND::cartesian(shape, this_start, delta, inside_domain);
-            *grid.get_mask_mut() = Self::make_mask(center.get_mask(), |pos, mask| {
-                Self::is_corner_inside(pos, mask)
-            });
-            grid
-        });
-
-        StaggeredGrid {
-            center,
-            face,
-            corner,
+impl<const ND: usize, I, M> StaggeredGridBuilder<ND, GridND<ND, I, M>>
+where
+    I: Copy,
+    M: Mask,
+{
+    /// Build `StaggeredGrid` with given `shape`.
+    ///
+    /// This is the first method in the build chain.
+    pub fn shape(shape: impl IntoShape<ND>) -> Self {
+        Self {
+            shape: shape.into_shape(),
+            center_coords: Vec::with_capacity(ND),
+            center_delta: Vec::with_capacity(ND),
+            center_mask: None,
         }
+    }
+
+    /// Define Cartesian coordinates, i.e. evenly sized grid boxes.
+    pub fn cartesian_coordinates(self, start: [I; ND], delta: [I; ND]) -> Self
+    where
+        I: Numeric,
+    {
+        let shape = self.shape;
+        Self {
+            shape: shape,
+            center_coords: (0..ND)
+                .map(|dim| {
+                    let mut res = <GridND<ND, I, M> as Grid<ND>>::Coord::full(I::zero(), shape);
+                    let start = start[dim];
+                    let delta = delta[dim];
+                    for ind in shape.into_shape() {
+                        res[ind] = start + delta * (ind[dim] as f64)
+                    }
+                    res
+                })
+                .collect(),
+            center_delta: delta
+                .iter()
+                .map(|&d| <GridND<ND, I, M> as Grid<ND>>::Coord::full(d, shape))
+                .collect(),
+            center_mask: None,
+        }
+    }
+
+    /// Define mask by providing a closure that takes an index array as argument and returns the mask value
+    pub fn mask<F>(self, predicate: F) -> Self
+    where
+        F: Fn(Ix<ND>) -> M,
+    {
+        let mut mask = <GridND<ND, I, M> as Grid<ND>>::MaskContainer::full(M::inside(), self.shape);
+        for ind in self.shape {
+            mask[ind] = predicate(ind)
+        }
+        Self {
+            center_mask: Some(mask),
+            ..self
+        }
+    }
+
+    /// Build the `StaggeredGrid` object. If no grid is defined, a default grid with closed boundaries will be specified.
+    ///
+    /// `closed_boundaries` corresponds to the number of right-most dimensions which have closed boundaries on both ends.
+    /// E.g., for an ocean model, `ND=3` and `closed_boundary=2` means that the horizonal dimensions (the right-most two dimensions)
+    /// and ocean bottom are closed.
+    pub fn build(self, closed_boundaries: usize) -> StaggeredGrid<ND, GridND<ND, I, M>>
+    where
+        I: Numeric,
+        M: std::fmt::Debug,
+    {
+        assert_eq!(self.center_coords.len(), ND);
+
+        match self.center_mask {
+            None => {
+                let shape = self.shape.clone();
+                return self
+                    .mask(|idx| default_mask::<ND, M>(idx, shape, closed_boundaries))
+                    .build(closed_boundaries);
+            }
+            Some(center_mask) => {
+                let Self {
+                    shape,
+                    center_coords,
+                    center_delta,
+                    center_mask: _,
+                } = self;
+
+                let center = Rc::new(GridND {
+                    coords: center_coords.try_into().expect("Dimensions should match"),
+                    delta: center_delta.try_into().expect("Dimensions should match"),
+                    mask: center_mask,
+                });
+
+                let delta = &center.delta;
+
+                let face = (0..ND)
+                    .map(|ndim| {
+                        let mut face_grid = center.as_ref().clone();
+                        let coord = &mut face_grid.coords[ndim];
+                        for idx in shape {
+                            coord[idx] = coord[idx] + delta[ndim][idx] * 0.5;
+                        }
+                        *face_grid.get_mask_mut() =
+                            StaggeredGrid::<ND, GridND<ND, I, M>>::make_mask(
+                                center.get_mask(),
+                                |pos, mask| {
+                                    StaggeredGrid::<ND, GridND<ND, I, M>>::is_face_inside(
+                                        pos,
+                                        ndim,
+                                        mask,
+                                        closed_boundaries,
+                                    )
+                                },
+                            );
+                        Rc::new(face_grid)
+                    })
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .expect("Should coerce to array");
+
+                let corner = Rc::new({
+                    let mut corner_grid = center.as_ref().clone();
+                    for ndim in 0..ND {
+                        let coord = &mut corner_grid.coords[ndim];
+                        for idx in shape {
+                            coord[idx] = coord[idx] + delta[ndim][idx] * 0.5;
+                        }
+                    }
+                    *corner_grid.get_mask_mut() = StaggeredGrid::<ND, GridND<ND, I, M>>::make_mask(
+                        center.get_mask(),
+                        |pos, mask| {
+                            StaggeredGrid::<ND, GridND<ND, I, M>>::is_corner_inside(
+                                pos,
+                                mask,
+                                closed_boundaries,
+                            )
+                        },
+                    );
+                    corner_grid
+                });
+
+                StaggeredGrid {
+                    center,
+                    face,
+                    corner,
+                }
+            }
+        }
+    }
+}
+
+/// Default mask.
+fn default_mask<const ND: usize, M>(idx: Ix<ND>, shape: Shape<ND>, closed_boundaries: usize) -> M
+where
+    M: Mask,
+{
+    if idx.iter().zip(shape.as_ref().iter()).enumerate().any(
+        |(ndim, (&i, &ni))| {
+            (i==0)                               // close boundary at lowest index
+        | ((i == ni - 1) & (ndim >= ND - closed_boundaries))
+        }, // closed bounday for largest index of two right-most dimensions (typically horizontal dimensions)
+    ) {
+        M::outside()
+    } else {
+        M::inside()
     }
 }
 
@@ -281,7 +412,7 @@ mod test {
         mask::{DomainMask, Mask},
     };
 
-    use super::{Grid, GridND, GridTopology, StaggeredGrid};
+    use super::{Grid, GridND, GridTopology, StaggeredGridBuilder};
 
     #[test]
     fn cartesian_grid_creation_set_correct_coords() {
@@ -323,19 +454,22 @@ mod test {
     }
 
     #[test]
-    fn cartesian_staggered_grid_set_correct_center_mask() {
+    fn cartesian_staggered_grid_set_correct_default_center_mask() {
         let shape = [4, 4, 4];
-        let sg =
-            StaggeredGrid::cartesian(shape, [0.0, 1.0, 2.0], [1., 2., 3.], DomainMask::inside());
+        let sg = StaggeredGridBuilder::shape(shape)
+            .cartesian_coordinates([0.0, 1.0, 2.0], [1., 2., 3.])
+            .build(2);
 
-        let g = sg.get_center();
+        let g: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_center();
+
+        println!("{}", g.get_mask());
 
         for idx in shape.into_shape() {
             if idx.iter().any(|&i| i == 0)
                 | idx
                     .iter()
                     .enumerate()
-                    .any(|(ndim, &i)| i == shape[ndim] - 1)
+                    .any(|(ndim, &i)| (i == shape[ndim] - 1) & (ndim >= 1))
             {
                 assert!(g.get_mask()[idx].is_outside());
             } else {
@@ -347,17 +481,20 @@ mod test {
     #[test]
     fn cartesian_staggered_grid_set_correct_corner_mask() {
         let shape = [4, 4, 4];
-        let sg =
-            StaggeredGrid::cartesian(shape, [0.0, 1.0, 1.0], [1., 2., 3.], DomainMask::inside());
+        let sg = StaggeredGridBuilder::shape(shape)
+            .cartesian_coordinates([0.0, 1.0, 2.0], [1., 2., 3.])
+            .build(2);
 
-        let g = sg.get_corner();
+        let g: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_corner();
+
+        println!("{}", g.get_mask());
 
         for idx in shape.into_shape() {
             if idx.iter().any(|&i| i == 0)
                 | idx
                     .iter()
                     .enumerate()
-                    .any(|(ndim, &i)| i >= shape[ndim] - 2)
+                    .any(|(ndim, &i)| (i >= shape[ndim] - 2) & (ndim >= 1))
             {
                 assert!(g.get_mask()[idx].is_outside());
             } else {
@@ -369,23 +506,31 @@ mod test {
     #[test]
     fn cartesian_staggered_grid_set_correct_face_mask() {
         let shape = [4, 4, 4];
-        let sg =
-            StaggeredGrid::cartesian(shape, [0.0, 1.0, 1.0], [1., 2., 3.], DomainMask::inside());
+        let sg = StaggeredGridBuilder::shape(shape)
+            .cartesian_coordinates([0.0, 1.0, 2.0], [1., 2., 3.])
+            .build(2);
+
         for face_dim in 0..shape.len() {
-            let g = sg.get_face(face_dim);
-            println!("{}\n", g.get_mask());
+            let g: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_face(face_dim);
+            println!("{}, {}\n", face_dim, g.get_mask());
             for idx in shape.into_shape() {
                 if idx.iter().any(|&i| i == 0)
                     | idx.iter().enumerate().any(|(dim, &i)| {
-                        if dim == face_dim {
-                            i >= shape[dim] - 2
+                        if dim >= 3 - 2 {
+                            if dim == face_dim {
+                                i >= shape[dim] - 2
+                            } else {
+                                i >= shape[dim] - 1
+                            }
                         } else {
-                            i >= shape[dim] - 1
+                            (dim == face_dim) & (i >= shape[dim] - 2) & (face_dim >= 1)
                         }
                     })
                 {
+                    println!("True");
                     assert!(g.get_mask()[idx].is_outside());
                 } else {
+                    println!("False");
                     assert!(g.get_mask()[idx].is_inside());
                 }
             }
@@ -396,14 +541,16 @@ mod test {
     fn cartesian_staggered_grid_set_correct_face_coords() {
         let shape = [4, 4, 4];
         let delta = [1., 2., 3.];
-        let sg = StaggeredGrid::cartesian(shape, [0.0, 1.0, 1.0], delta, DomainMask::inside());
-        let center = sg.get_center();
+        let sg = StaggeredGridBuilder::shape(shape)
+            .cartesian_coordinates([0.0, 1.0, 2.0], [1., 2., 3.])
+            .build(2);
+        let center: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_center();
         for face_dim in 0..shape.len() {
             let g = sg.get_face(face_dim);
             for dim in 0..shape.len() {
                 if dim != face_dim {
                     for idx in shape.into_shape() {
-                        assert_eq!(g.get_coord(dim)[idx], center.get_coord(dim)[idx]);
+                        assert_eq!(center.get_coord(dim)[idx], g.get_coord(dim)[idx]);
                     }
                 } else {
                     for idx in shape.into_shape() {
@@ -421,12 +568,14 @@ mod test {
         let shape = [4, 4, 4];
         let delta = [1., 2., 3.];
         let start = [0.0, 1.0, 1.0];
-        let sg = StaggeredGrid::cartesian(shape, start, delta, DomainMask::inside());
-        let center = sg.get_center();
+        let sg = StaggeredGridBuilder::shape(shape)
+            .cartesian_coordinates(start, delta)
+            .build(2);
+        let g: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_center();
         for dim in 0..shape.len() {
             for idx in shape.into_shape() {
                 assert_eq!(
-                    center.get_coord(dim)[idx],
+                    g.get_coord(dim)[idx],
                     start[dim] + delta[dim] * (idx[dim] as f64)
                 )
             }
@@ -437,15 +586,40 @@ mod test {
         let shape = [4, 4, 4];
         let delta = [1., 2., 3.];
         let start = [0.0, 1.0, 1.0];
-        let sg = StaggeredGrid::cartesian(shape, start, delta, DomainMask::inside());
-        let center = sg.get_corner();
+        let sg = StaggeredGridBuilder::shape(shape)
+            .cartesian_coordinates(start, delta)
+            .build(2);
+        let g: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_corner();
         for dim in 0..shape.len() {
             for idx in shape.into_shape() {
                 assert_eq!(
-                    center.get_coord(dim)[idx],
+                    g.get_coord(dim)[idx],
                     start[dim] + delta[dim] * (idx[dim] as f64 + 0.5)
                 )
             }
+        }
+    }
+
+    #[test]
+    fn cartesian_staggered_grid_set_correct_mask() {
+        let shape = [4, 4, 4];
+        let delta = [1., 2., 3.];
+        let start = [0.0, 1.0, 1.0];
+        let sg = StaggeredGridBuilder::shape(shape)
+            .cartesian_coordinates(start, delta)
+            .mask(|idx| {
+                if idx[0] < 2 {
+                    DomainMask::inside()
+                } else {
+                    DomainMask::outside()
+                }
+            })
+            .build(2);
+
+        let g = sg.get_center();
+
+        for idx in shape.into_shape() {
+            assert_eq!(g.get_mask()[idx].is_inside(), idx[0] < 2)
         }
     }
 }
