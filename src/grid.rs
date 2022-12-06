@@ -201,15 +201,15 @@ where
     }
 }
 
-/// Grid topology for curvilinear grids.
+/// Grid topology for curvilinear finite volume grids.
 #[derive(Debug)]
-pub struct StaggeredGrid<const ND: usize, G> {
+pub struct FiniteVolumeGrid<const ND: usize, G> {
     center: Rc<G>,
     face: [Rc<G>; ND],
     corner: Rc<G>,
 }
 
-impl<const ND: usize, G> GridTopology<ND> for StaggeredGrid<ND, G>
+impl<const ND: usize, G> GridTopology<ND> for FiniteVolumeGrid<ND, G>
 where
     G: Grid<ND>,
 {
@@ -227,8 +227,8 @@ where
     }
 }
 
-/// Builder for `StaggeregGrid` types
-pub struct StaggeredGridBuilder<const ND: usize, G>
+/// Builder for [`FiniteVolumeGrid`] types
+pub struct FiniteVolumeGridBuilder<const ND: usize, G>
 where
     G: Grid<ND>,
 {
@@ -238,12 +238,12 @@ where
     center_mask: Option<G::MaskContainer>,
 }
 
-impl<const ND: usize, I, M> StaggeredGridBuilder<ND, GridND<ND, I, M>>
+impl<const ND: usize, I, M> FiniteVolumeGridBuilder<ND, GridND<ND, I, M>>
 where
     I: Copy,
     M: Mask,
 {
-    /// Build `StaggeredGrid` with given `shape`.
+    /// Build [`FiniteVolumeGrid`] with given `shape`.
     ///
     /// This is the first method in the build chain.
     pub fn shape(shape: impl IntoShape<ND>) -> Self {
@@ -297,12 +297,12 @@ where
         }
     }
 
-    /// Build the `StaggeredGrid` object. If no grid is defined, a default grid with closed boundaries will be specified.
+    /// Build the [`FiniteVolumeGrid`] object. If no grid is defined, a default grid with closed boundaries will be specified.
     ///
     /// `closed_boundaries` corresponds to the number of right-most dimensions which have closed boundaries on both ends.
     /// E.g., for an ocean model, `ND=3` and `closed_boundary=2` means that the horizonal dimensions (the right-most two dimensions)
     /// and ocean bottom are closed.
-    pub fn build(self, closed_boundaries: usize) -> StaggeredGrid<ND, GridND<ND, I, M>>
+    pub fn build(self, closed_boundaries: usize) -> FiniteVolumeGrid<ND, GridND<ND, I, M>>
     where
         I: Numeric,
         M: std::fmt::Debug,
@@ -340,10 +340,10 @@ where
                             coord[idx] = coord[idx] + delta[ndim][idx] * 0.5;
                         }
                         *face_grid.get_mask_mut() =
-                            StaggeredGrid::<ND, GridND<ND, I, M>>::make_mask(
+                            FiniteVolumeGrid::<ND, GridND<ND, I, M>>::make_mask(
                                 center.get_mask(),
                                 |pos, mask| {
-                                    StaggeredGrid::<ND, GridND<ND, I, M>>::is_face_inside(
+                                    FiniteVolumeGrid::<ND, GridND<ND, I, M>>::is_face_inside(
                                         pos,
                                         ndim,
                                         mask,
@@ -365,20 +365,21 @@ where
                             coord[idx] = coord[idx] + delta[ndim][idx] * 0.5;
                         }
                     }
-                    *corner_grid.get_mask_mut() = StaggeredGrid::<ND, GridND<ND, I, M>>::make_mask(
-                        center.get_mask(),
-                        |pos, mask| {
-                            StaggeredGrid::<ND, GridND<ND, I, M>>::is_corner_inside(
-                                pos,
-                                mask,
-                                closed_boundaries,
-                            )
-                        },
-                    );
+                    *corner_grid.get_mask_mut() =
+                        FiniteVolumeGrid::<ND, GridND<ND, I, M>>::make_mask(
+                            center.get_mask(),
+                            |pos, mask| {
+                                FiniteVolumeGrid::<ND, GridND<ND, I, M>>::is_corner_inside(
+                                    pos,
+                                    mask,
+                                    closed_boundaries,
+                                )
+                            },
+                        );
                     corner_grid
                 });
 
-                StaggeredGrid {
+                FiniteVolumeGrid {
                     center,
                     face,
                     corner,
@@ -412,7 +413,7 @@ mod test {
         mask::{DomainMask, Mask},
     };
 
-    use super::{Grid, GridND, GridTopology, StaggeredGridBuilder};
+    use super::{FiniteVolumeGridBuilder, Grid, GridND, GridTopology};
 
     #[test]
     fn cartesian_grid_creation_set_correct_coords() {
@@ -456,7 +457,7 @@ mod test {
     #[test]
     fn cartesian_staggered_grid_set_correct_default_center_mask() {
         let shape = [4, 4, 4];
-        let sg = StaggeredGridBuilder::shape(shape)
+        let sg = FiniteVolumeGridBuilder::shape(shape)
             .cartesian_coordinates([0.0, 1.0, 2.0], [1., 2., 3.])
             .build(2);
 
@@ -481,7 +482,7 @@ mod test {
     #[test]
     fn cartesian_staggered_grid_set_correct_corner_mask() {
         let shape = [4, 4, 4];
-        let sg = StaggeredGridBuilder::shape(shape)
+        let sg = FiniteVolumeGridBuilder::shape(shape)
             .cartesian_coordinates([0.0, 1.0, 2.0], [1., 2., 3.])
             .build(2);
 
@@ -506,7 +507,7 @@ mod test {
     #[test]
     fn cartesian_staggered_grid_set_correct_face_mask() {
         let shape = [4, 4, 4];
-        let sg = StaggeredGridBuilder::shape(shape)
+        let sg = FiniteVolumeGridBuilder::shape(shape)
             .cartesian_coordinates([0.0, 1.0, 2.0], [1., 2., 3.])
             .build(2);
 
@@ -541,7 +542,7 @@ mod test {
     fn cartesian_staggered_grid_set_correct_face_coords() {
         let shape = [4, 4, 4];
         let delta = [1., 2., 3.];
-        let sg = StaggeredGridBuilder::shape(shape)
+        let sg = FiniteVolumeGridBuilder::shape(shape)
             .cartesian_coordinates([0.0, 1.0, 2.0], [1., 2., 3.])
             .build(2);
         let center: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_center();
@@ -568,7 +569,7 @@ mod test {
         let shape = [4, 4, 4];
         let delta = [1., 2., 3.];
         let start = [0.0, 1.0, 1.0];
-        let sg = StaggeredGridBuilder::shape(shape)
+        let sg = FiniteVolumeGridBuilder::shape(shape)
             .cartesian_coordinates(start, delta)
             .build(2);
         let g: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_center();
@@ -586,7 +587,7 @@ mod test {
         let shape = [4, 4, 4];
         let delta = [1., 2., 3.];
         let start = [0.0, 1.0, 1.0];
-        let sg = StaggeredGridBuilder::shape(shape)
+        let sg = FiniteVolumeGridBuilder::shape(shape)
             .cartesian_coordinates(start, delta)
             .build(2);
         let g: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_corner();
@@ -605,7 +606,7 @@ mod test {
         let shape = [4, 4, 4];
         let delta = [1., 2., 3.];
         let start = [0.0, 1.0, 1.0];
-        let sg = StaggeredGridBuilder::shape(shape)
+        let sg = FiniteVolumeGridBuilder::shape(shape)
             .cartesian_coordinates(start, delta)
             .mask(|idx| {
                 if idx[0] < 2 {
