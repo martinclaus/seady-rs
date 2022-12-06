@@ -21,7 +21,7 @@ pub trait Variable<const ND: usize> {
     fn get_data_mut(&mut self) -> &mut Self::Data;
 
     /// Return a reference to the grid on which the variable is defined
-    fn get_grid(&self) -> &Rc<Self::Grid>;
+    fn get_grid(&self) -> Rc<Self::Grid>;
 }
 
 /// Basic Variable type
@@ -87,7 +87,7 @@ where
         &mut self.data
     }
 
-    fn get_grid(&self) -> &Rc<Self::Grid> {
-        &self.grid
+    fn get_grid(&self) -> Rc<Self::Grid> {
+        self.grid.clone()
     }
 }
