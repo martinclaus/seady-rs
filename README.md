@@ -5,7 +5,7 @@ In contrast to other CFD frameworks, it is designed with a focus on ocean and at
 This allows to expose a clear and simple to use API to the user who is implementing a numerical solver for a particular model.
 
 ## List of desired features
-- [ ] Core generic data structures such as Array, Grid, Variable, State
+- [x] Core generic data structures such as Array, Grid, State
 - [ ] Abstractions of fundamental controllers (time stepping schemes, computational kernels, etc.)
 - [ ] distributed asynchronous computing
 
