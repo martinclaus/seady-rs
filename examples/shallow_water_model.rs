@@ -1,6 +1,6 @@
 use fixed_map::Key;
 use seady::{
-    field::{ArrND, Field, IntoShape},
+    field::{ArrND, Field},
     grid::{FiniteVolumeGridBuilder, Grid, GridND, GridTopology},
     mask::{DomainMask, Mask},
     state::{State, StateDeque, StateFactory, VarKey},
@@ -19,7 +19,7 @@ impl VarKey for VAR {}
 type S = State<VAR, ArrND<2, f64>, GridND<2, f64, DomainMask>>;
 
 fn main() {
-    let shape = [100, 100].into_shape();
+    let shape = [100, 100];
 
     let dt = 0.05;
 

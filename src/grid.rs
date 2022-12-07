@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::field::{ArrND, Field, IntoShape, Ix, Shape};
+use crate::field::{ArrND, Field, Ix, Shape};
 use crate::mask::Mask;
 use crate::Numeric;
 
@@ -156,7 +156,7 @@ where
 {
     /// Return a Cartesian grid, i.e. a rectangular grid where the grid points are evenly spaced.
     pub fn cartesian(
-        shape: impl IntoShape<ND>,
+        shape: impl Into<Shape<ND>>,
         start: [I; ND],
         delta: [I; ND],
         inside_domain: M,
@@ -164,7 +164,7 @@ where
     where
         I: std::fmt::Debug,
     {
-        let shape = shape.into_shape();
+        let shape = shape.into();
         GridND {
             coords: (0..ND)
                 .map(|dim| {
@@ -244,9 +244,9 @@ where
     /// Build [`FiniteVolumeGrid`] with given `shape`.
     ///
     /// This is the first method in the build chain.
-    pub fn shape(shape: impl IntoShape<ND>) -> Self {
+    pub fn shape(shape: impl Into<Shape<ND>>) -> Self {
         Self {
-            shape: shape.into_shape(),
+            shape: shape.into(),
             center_coords: Vec::with_capacity(ND),
             center_delta: Vec::with_capacity(ND),
             center_mask: None,
@@ -266,7 +266,7 @@ where
                     let mut res = <GridND<ND, I, M> as Grid<ND>>::Coord::full(I::zero(), shape);
                     let start = start[dim];
                     let delta = delta[dim];
-                    for ind in shape.into_shape() {
+                    for ind in shape {
                         res[ind] = start + delta * (ind[dim] as f64)
                     }
                     res
@@ -407,7 +407,7 @@ where
 #[cfg(test)]
 mod test {
     use crate::{
-        field::IntoShape,
+        field::Shape,
         mask::{DomainMask, Mask},
     };
 
@@ -454,7 +454,7 @@ mod test {
 
     #[test]
     fn cartesian_staggered_grid_set_correct_default_center_mask() {
-        let shape = [4, 4, 4];
+        let shape: Shape<3> = [4, 4, 4].into();
         let sg = FiniteVolumeGridBuilder::shape(shape)
             .cartesian_coordinates([0.0, 1.0, 2.0], [1., 2., 3.])
             .build(2);
@@ -463,7 +463,7 @@ mod test {
 
         println!("{}", g.get_mask());
 
-        for idx in shape.into_shape() {
+        for idx in shape {
             if idx.iter().any(|&i| i == 0)
                 | idx
                     .iter()
@@ -479,8 +479,7 @@ mod test {
 
     #[test]
     fn cartesian_staggered_grid_set_correct_corner_mask() {
-        let shape = [4, 4, 4];
-        let sg = FiniteVolumeGridBuilder::shape(shape)
+        let sg = FiniteVolumeGridBuilder::shape([4, 4, 4])
             .cartesian_coordinates([0.0, 1.0, 2.0], [1., 2., 3.])
             .build(2);
 
@@ -488,12 +487,12 @@ mod test {
 
         println!("{}", g.get_mask());
 
-        for idx in shape.into_shape() {
+        for idx in g.shape() {
             if idx.iter().any(|&i| i == 0)
                 | idx
                     .iter()
                     .enumerate()
-                    .any(|(ndim, &i)| (i >= shape[ndim] - 2) & (ndim >= 1))
+                    .any(|(ndim, &i)| (i >= g.shape()[ndim] - 2) & (ndim >= 1))
             {
                 assert!(g.get_mask()[idx].is_outside());
             } else {
@@ -504,25 +503,25 @@ mod test {
 
     #[test]
     fn cartesian_staggered_grid_set_correct_face_mask() {
-        let shape = [4, 4, 4];
-        let sg = FiniteVolumeGridBuilder::shape(shape)
+        let sg = FiniteVolumeGridBuilder::shape([4, 4, 4])
             .cartesian_coordinates([0.0, 1.0, 2.0], [1., 2., 3.])
             .build(2);
+        let center = sg.get_center();
 
-        for face_dim in 0..shape.len() {
+        for face_dim in 0..center.shape().ndim() {
             let g: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_face(face_dim);
             println!("{}, {}\n", face_dim, g.get_mask());
-            for idx in shape.into_shape() {
+            for idx in g.shape() {
                 if idx.iter().any(|&i| i == 0)
                     | idx.iter().enumerate().any(|(dim, &i)| {
                         if dim >= 3 - 2 {
                             if dim == face_dim {
-                                i >= shape[dim] - 2
+                                i >= g.shape()[dim] - 2
                             } else {
-                                i >= shape[dim] - 1
+                                i >= g.shape()[dim] - 1
                             }
                         } else {
-                            (dim == face_dim) & (i >= shape[dim] - 2) & (face_dim >= 1)
+                            (dim == face_dim) & (i >= g.shape()[dim] - 2) & (face_dim >= 1)
                         }
                     })
                 {
@@ -538,21 +537,20 @@ mod test {
 
     #[test]
     fn cartesian_staggered_grid_set_correct_face_coords() {
-        let shape = [4, 4, 4];
         let delta = [1., 2., 3.];
-        let sg = FiniteVolumeGridBuilder::shape(shape)
-            .cartesian_coordinates([0.0, 1.0, 2.0], [1., 2., 3.])
+        let sg = FiniteVolumeGridBuilder::shape([4, 4, 4])
+            .cartesian_coordinates([0.0, 1.0, 2.0], delta)
             .build(2);
         let center: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_center();
-        for face_dim in 0..shape.len() {
+        for face_dim in 0..center.shape().ndim() {
             let g = sg.get_face(face_dim);
-            for dim in 0..shape.len() {
+            for dim in 0..g.shape().ndim() {
                 if dim != face_dim {
-                    for idx in shape.into_shape() {
+                    for idx in g.shape() {
                         assert_eq!(center.get_coord(dim)[idx], g.get_coord(dim)[idx]);
                     }
                 } else {
-                    for idx in shape.into_shape() {
+                    for idx in g.shape() {
                         assert_eq!(
                             g.get_coord(dim)[idx],
                             center.get_coord(dim)[idx] + delta[dim] * 0.5
@@ -564,15 +562,14 @@ mod test {
     }
     #[test]
     fn cartesian_staggered_grid_set_correct_center_coords() {
-        let shape = [4, 4, 4];
         let delta = [1., 2., 3.];
         let start = [0.0, 1.0, 1.0];
-        let sg = FiniteVolumeGridBuilder::shape(shape)
+        let sg = FiniteVolumeGridBuilder::shape([4, 4, 4])
             .cartesian_coordinates(start, delta)
             .build(2);
         let g: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_center();
-        for dim in 0..shape.len() {
-            for idx in shape.into_shape() {
+        for dim in 0..g.shape().ndim() {
+            for idx in g.shape() {
                 assert_eq!(
                     g.get_coord(dim)[idx],
                     start[dim] + delta[dim] * (idx[dim] as f64)
@@ -582,15 +579,14 @@ mod test {
     }
     #[test]
     fn cartesian_staggered_grid_set_correct_corner_coords() {
-        let shape = [4, 4, 4];
         let delta = [1., 2., 3.];
         let start = [0.0, 1.0, 1.0];
-        let sg = FiniteVolumeGridBuilder::shape(shape)
+        let sg = FiniteVolumeGridBuilder::shape([4, 4, 4])
             .cartesian_coordinates(start, delta)
             .build(2);
         let g: std::rc::Rc<GridND<3, f64, DomainMask>> = sg.get_corner();
-        for dim in 0..shape.len() {
-            for idx in shape.into_shape() {
+        for dim in 0..g.shape().ndim() {
+            for idx in g.shape() {
                 assert_eq!(
                     g.get_coord(dim)[idx],
                     start[dim] + delta[dim] * (idx[dim] as f64 + 0.5)
@@ -601,10 +597,9 @@ mod test {
 
     #[test]
     fn cartesian_staggered_grid_set_correct_mask() {
-        let shape = [4, 4, 4];
         let delta = [1., 2., 3.];
         let start = [0.0, 1.0, 1.0];
-        let sg = FiniteVolumeGridBuilder::shape(shape)
+        let sg = FiniteVolumeGridBuilder::shape([4, 4, 4])
             .cartesian_coordinates(start, delta)
             .mask(|idx| {
                 if idx[0] < 2 {
@@ -617,7 +612,7 @@ mod test {
 
         let g = sg.get_center();
 
-        for idx in shape.into_shape() {
+        for idx in g.shape() {
             assert_eq!(g.get_mask()[idx].is_inside(), idx[0] < 2)
         }
     }

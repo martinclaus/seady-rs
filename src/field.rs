@@ -1,4 +1,4 @@
-//! Provides the [`Arr2D`] type, which is the basic data type to deal with 2D arrays,
+//! Provides the [`ArrND`] type, which is the basic data type to deal with 2D arrays,
 //! and the [`Field`] trait which must be implemented by any type that shall be used to store
 //! data of model variables.
 
@@ -46,6 +46,12 @@ impl<const ND: usize> From<[usize; ND]> for Ix<ND> {
     }
 }
 
+impl<const ND: usize> Into<[usize; ND]> for Ix<ND> {
+    fn into(self) -> [usize; ND] {
+        self.0
+    }
+}
+
 /// Array shape
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shape<const ND: usize>([usize; ND]);
@@ -61,6 +67,11 @@ impl<const ND: usize> Shape<ND> {
         let mut size = 1;
         self.0.iter().for_each(|i| size *= i);
         size
+    }
+
+    /// Return number of dimensions
+    pub const fn ndim(&self) -> usize {
+        ND
     }
 }
 
@@ -134,27 +145,12 @@ impl<const ND: usize> Iterator for NDIndexer<ND> {
     }
 }
 
-/// Trait to allow for conversion into a Shape type
-pub trait IntoShape<const ND: usize> {
-    fn into_shape(self) -> Shape<ND>;
-}
-
-impl<const ND: usize> IntoShape<ND> for Shape<ND> {
-    fn into_shape(self) -> Shape<ND> {
-        self
-    }
-}
-
-impl<const ND: usize> IntoShape<ND> for [usize; ND] {
-    fn into_shape(self) -> Shape<ND> {
-        Shape(self)
-    }
-}
-
-impl<const ND: usize> IntoShape<ND> for &[usize] {
-    fn into_shape(self) -> Shape<ND> {
-        let shape = self.try_into().expect("Dimension should match");
-        Shape(shape)
+impl<const ND: usize, T> From<T> for Shape<ND>
+where
+    T: Into<[usize; ND]>,
+{
+    fn from(from: T) -> Self {
+        Shape(from.into())
     }
 }
 
@@ -175,7 +171,7 @@ where
 {
     type Item;
     /// Create a new field with all elements set to a constant value.
-    fn full(item: Self::Item, shape: impl IntoShape<ND>) -> Self;
+    fn full(item: Self::Item, shape: impl Into<Shape<ND>>) -> Self;
 
     /// Return the shape of the array.
     fn shape(&self) -> Shape<ND>;
@@ -278,8 +274,8 @@ impl<const ND: usize, I: AddAssign + Copy> AddAssign for ArrND<ND, I> {
 impl<const ND: usize, I: Copy> Field<ND> for ArrND<ND, I> {
     type Item = I;
 
-    fn full(item: I, shape: impl IntoShape<ND>) -> Self {
-        let shape = shape.into_shape();
+    fn full(item: I, shape: impl Into<Shape<ND>>) -> Self {
+        let shape = shape.into();
         ArrND {
             shape,
             data: vec![item; shape.size()].into_boxed_slice(),
@@ -345,20 +341,20 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::field::{IntoShape, Ix, Shape};
+    use crate::field::{Ix, Shape};
 
     use super::{ArrND, Field};
 
     #[test]
     fn new_shape_from_array() {
-        let shape = [2, 3];
-        assert_eq!(shape.into_shape(), Shape([2, 3]));
+        let shape: Shape<2> = [2, 3].into();
+        assert_eq!(shape, Shape([2, 3]));
     }
 
     #[test]
     fn nd_indexer_produces_correct_values_1d() {
         use super::NDIndexer;
-        let shape = [2].into_shape();
+        let shape = [2].into();
 
         let mut indexer = NDIndexer { inner: None, shape };
 
@@ -371,7 +367,7 @@ mod test {
     #[test]
     fn nd_indexer_produces_correct_values_2d() {
         use super::NDIndexer;
-        let shape = [2, 3].into_shape();
+        let shape = [2, 3].into();
 
         let mut indexer = NDIndexer { inner: None, shape };
 
@@ -388,7 +384,7 @@ mod test {
     #[test]
     fn nd_indexer_produces_correct_values_3d() {
         use super::NDIndexer;
-        let shape = [2, 2, 2].into_shape();
+        let shape = [2, 2, 2].into();
 
         let mut indexer = NDIndexer { inner: None, shape };
 
@@ -414,7 +410,7 @@ mod test {
         let shape = [2, 2];
 
         let arr = ArrND::full(0f64, shape);
-        assert_eq!(arr.shape, shape.into_shape());
+        assert_eq!(arr.shape, shape.into());
         assert_eq!(arr[Ix([0, 0])], 0f64);
         assert_eq!(arr[Ix([0, 1])], 0f64);
         assert_eq!(arr[Ix([1, 0])], 0f64);
