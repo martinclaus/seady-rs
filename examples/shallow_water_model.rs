@@ -88,9 +88,9 @@ fn rhs(state: &S, mut inc: S) -> S {
 
 fn pressure_gradient_i(state: &S, inc: &mut S) {
     let u_grid = state.get_grid(SwmVars::U);
-    let dx = u_grid.get_delta(1);
+    let dx = u_grid.get_delta(1).clone();
     let u_inc = &mut inc[SwmVars::U];
-    let eta = &state[SwmVars::ETA];
+    let eta = state[SwmVars::ETA].clone();
     let shape = eta.shape();
     for idx in shape {
         let ip1 = [idx[0], cyclic_shift(idx[1], 1, shape[1])];
@@ -100,9 +100,9 @@ fn pressure_gradient_i(state: &S, inc: &mut S) {
 
 fn pressure_gradient_j(state: &S, inc: &mut S) {
     let grid_v = state.get_grid(SwmVars::V);
-    let dy = grid_v.get_delta(0);
+    let dy = grid_v.get_delta(0).clone();
     let v_inc = &mut inc[SwmVars::V];
-    let eta = &state[SwmVars::ETA];
+    let eta = state[SwmVars::ETA].clone();
     let shape = eta.shape();
     for idx in shape {
         let jp1 = [cyclic_shift(idx[0], 1, shape[0]), idx[0]];
@@ -112,10 +112,10 @@ fn pressure_gradient_j(state: &S, inc: &mut S) {
 
 fn divergence(state: &S, inc: &mut S) {
     let eta_grid = state.get_grid(SwmVars::ETA);
-    let dx = eta_grid.get_delta(1);
-    let dy = eta_grid.get_delta(0);
-    let u = &state[SwmVars::U];
-    let v = &state[SwmVars::V];
+    let dx = eta_grid.get_delta(1).clone();
+    let dy = eta_grid.get_delta(0).clone();
+    let u = state[SwmVars::U].clone();
+    let v = state[SwmVars::V].clone();
     let eta_inc = &mut inc[SwmVars::ETA];
     let shape = u.shape();
     for idx in shape {
