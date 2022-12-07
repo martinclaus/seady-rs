@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::variable::Variable;
+use crate::variable::{Var, Variable};
 
 /// Marker trait for Variable keys of [State] collections
 pub trait VarKey: Copy + fixed_map::key::Key + std::fmt::Debug {}
@@ -27,33 +27,33 @@ impl VarKey for SwmVars {}
 /// The state is a collection of all prognostic variables of an set of differential equations, that are
 /// the variables which for the solution of the system.
 #[derive(Debug)]
-pub struct State<K, V>(Map<K, V>)
+pub struct State<K, D, G>(Map<K, Var<D, G>>)
 where
     K: VarKey;
 
-impl<K, V> AsRef<Map<K, V>> for State<K, V>
+impl<K, D, G> AsRef<Map<K, Var<D, G>>> for State<K, D, G>
 where
     K: VarKey,
 {
-    fn as_ref(&self) -> &Map<K, V> {
+    fn as_ref(&self) -> &Map<K, Var<D, G>> {
         &self.0
     }
 }
 
-impl<K, V> AsMut<Map<K, V>> for State<K, V>
+impl<K, D, G> AsMut<Map<K, Var<D, G>>> for State<K, D, G>
 where
     K: VarKey,
 {
-    fn as_mut(&mut self) -> &mut Map<K, V> {
+    fn as_mut(&mut self) -> &mut Map<K, Var<D, G>> {
         &mut self.0
     }
 }
 
-impl<K, V> Index<K> for State<K, V>
+impl<K, D, G> Index<K> for State<K, D, G>
 where
     K: VarKey,
 {
-    type Output = V;
+    type Output = Var<D, G>;
 
     fn index(&self, index: K) -> &Self::Output {
         &self
@@ -63,7 +63,7 @@ where
     }
 }
 
-impl<K, V> IndexMut<K> for State<K, V>
+impl<K, D, G> IndexMut<K> for State<K, D, G>
 where
     K: VarKey,
 {
@@ -77,16 +77,21 @@ where
 /// Type alias for mapping variable id onto the grid on which the variable is defined.
 pub type GridMap<K, G> = Map<K, Rc<G>>;
 
-impl<K, V> State<K, V>
+impl<K, D, G> State<K, D, G>
 where
     K: VarKey,
 {
     /// Create a new state from a grid mapping.
-    pub fn new<const ND: usize>(grid_map: &GridMap<K, V::Grid>) -> Self
+    pub fn new<const ND: usize>(grid_map: &GridMap<K, G>) -> Self
     where
-        V: Variable<ND>,
+        Var<D, G>: Variable<ND, Data = D, Grid = G>,
     {
-        State(grid_map.iter().map(|(k, g)| (k, V::zeros(g))).collect())
+        State(
+            grid_map
+                .iter()
+                .map(|(k, g)| (k, Var::<D, G>::zeros(g)))
+                .collect(),
+        )
     }
 }
 
@@ -96,25 +101,20 @@ where
 /// Additionally, it provides a buffer to store used state objects for later
 /// reuse to reduce the number of memory allocations.
 #[derive(Debug)]
-pub struct StateFactory<const ND: usize, K, V>
+pub struct StateFactory<K, D, G>
 where
-    V: Variable<ND>,
     K: VarKey,
 {
-    grid_map: GridMap<K, V::Grid>,
-    buffer: VecDeque<State<K, V>>,
+    grid_map: GridMap<K, G>,
+    buffer: VecDeque<State<K, D, G>>,
 }
 
-impl<const ND: usize, K, V> StateFactory<ND, K, V>
+impl<K, D, G> StateFactory<K, D, G>
 where
-    V: Variable<ND>,
     K: VarKey,
 {
     /// Create a new StateFactory object
-    pub fn new(grid_map: impl IntoIterator<Item = (K, Rc<V::Grid>)>) -> Self
-    where
-        V: Variable<ND>,
-    {
+    pub fn new(grid_map: impl IntoIterator<Item = (K, Rc<G>)>) -> Self {
         Self {
             grid_map: grid_map.into_iter().collect(),
             buffer: VecDeque::new(),
@@ -130,18 +130,24 @@ where
     }
 
     /// Create a new state object. This call involves memory allocation.
-    fn make_state(&self) -> State<K, V> {
+    fn make_state<const ND: usize>(&self) -> State<K, D, G>
+    where
+        Var<D, G>: Variable<ND, Data = D, Grid = G>,
+    {
         State::new(&self.grid_map)
     }
 
     /// Return a state object. The object is either popped form the internal buffer of allocated.
     /// **No assumptions can be made about the content of the data contained in the state's variables**.
-    pub fn get(&mut self) -> State<K, V> {
+    pub fn get<const ND: usize>(&mut self) -> State<K, D, G>
+    where
+        Var<D, G>: Variable<ND, Data = D, Grid = G>,
+    {
         self.buffer.pop_front().unwrap_or_else(|| self.make_state())
     }
 
     /// Push a state object to the internal buffer for later reuse.
-    pub fn take(&mut self, state: State<K, V>) {
+    pub fn take(&mut self, state: State<K, D, G>) {
         self.buffer.push_back(state);
     }
 }
@@ -153,28 +159,22 @@ where
 /// dropped or consumed by a [StateFactory]'s internal buffer.
 /// New elements will be added to the end of the deque.
 #[derive(Debug)]
-pub struct StateDeque<K, V>(VecDeque<State<K, V>>)
+pub struct StateDeque<K, D, G>(VecDeque<State<K, D, G>>)
 where
     K: VarKey;
 
-impl<K, V> StateDeque<K, V>
+impl<K, D, G> StateDeque<K, D, G>
 where
     K: VarKey,
 {
     /// Create a new StateDeque with a given fixed capacity.
-    pub fn new(capacity: usize) -> StateDeque<K, V> {
-        StateDeque(VecDeque::<State<K, V>>::with_capacity(capacity))
+    pub fn new(capacity: usize) -> StateDeque<K, D, G> {
+        StateDeque(VecDeque::<State<K, D, G>>::with_capacity(capacity))
     }
 
     /// Add an element to the end of the deque. If the capacity is reached, the oldest element will be droped or
     /// handed over to the `consumer` for reuse.
-    pub fn push<const ND: usize>(
-        &mut self,
-        elem: State<K, V>,
-        consumer: Option<&mut StateFactory<ND, K, V>>,
-    ) where
-        V: Variable<ND>,
-    {
+    pub fn push(&mut self, elem: State<K, D, G>, consumer: Option<&mut StateFactory<K, D, G>>) {
         // buffer full
         if self.0.len() == self.0.capacity() {
             self.0.pop_front().and_then(|state| {
@@ -197,42 +197,42 @@ where
         self.0.is_empty()
     }
 
-    /// Returns a [VecDeque<&V>] with references to a particular variable of all contained states.
-    pub fn get_var(&self, var: K) -> VecDeque<&V> {
+    /// Returns a [VecDeque<&Var<D, G>>] with references to a particular variable of all contained states.
+    pub fn get_var(&self, var: K) -> VecDeque<&Var<D, G>> {
         VecDeque::from_iter(self.0.iter().map(|s| &s[var]))
     }
 }
 
-impl<K, V> AsRef<VecDeque<State<K, V>>> for StateDeque<K, V>
+impl<K, D, G> AsRef<VecDeque<State<K, D, G>>> for StateDeque<K, D, G>
 where
     K: VarKey,
 {
-    fn as_ref(&self) -> &VecDeque<State<K, V>> {
+    fn as_ref(&self) -> &VecDeque<State<K, D, G>> {
         &self.0
     }
 }
 
-impl<K, V> AsMut<VecDeque<State<K, V>>> for StateDeque<K, V>
+impl<K, D, G> AsMut<VecDeque<State<K, D, G>>> for StateDeque<K, D, G>
 where
     K: VarKey,
 {
-    fn as_mut(&mut self) -> &mut VecDeque<State<K, V>> {
+    fn as_mut(&mut self) -> &mut VecDeque<State<K, D, G>> {
         &mut self.0
     }
 }
 
-impl<K, V> Index<usize> for StateDeque<K, V>
+impl<K, D, G> Index<usize> for StateDeque<K, D, G>
 where
     K: VarKey,
 {
-    type Output = State<K, V>;
+    type Output = State<K, D, G>;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.as_ref()[index]
     }
 }
 
-impl<K, V> IndexMut<usize> for StateDeque<K, V>
+impl<K, D, G> IndexMut<usize> for StateDeque<K, D, G>
 where
     K: VarKey,
 {

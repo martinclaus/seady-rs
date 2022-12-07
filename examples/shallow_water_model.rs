@@ -5,7 +5,7 @@ use seady::{
     mask::{DomainMask, Mask},
     state::{State, StateDeque, StateFactory, VarKey},
     timestepping::{Ab3, Integrate},
-    variable::{Var, Variable},
+    variable::Variable,
 };
 
 /// Prognostic variables of the shallow water equations
@@ -17,7 +17,7 @@ pub enum SwmVars {
 }
 impl VarKey for SwmVars {}
 
-type S = State<SwmVars, Var<ArrND<2, f64>, GridND<2, f64, DomainMask>>>;
+type S = State<SwmVars, ArrND<2, f64>, GridND<2, f64, DomainMask>>;
 
 fn main() {
     let shape = [100, 100].into_shape();
@@ -41,8 +41,28 @@ fn main() {
         (SwmVars::U, grid.get_face(1)),
     ]);
 
-    let mut state: S = state_factory.get();
+    let mut rhs_eval = StateDeque::new(3);
 
+    let mut state = state_factory.get();
+    set_initial_conditions(&mut state);
+
+    let now = std::time::Instant::now();
+    for _ in 0..500 {
+        rhs_eval.push(rhs(&state, state_factory.get()), Some(&mut state_factory));
+
+        let mut inc = state_factory.get();
+        for var in [SwmVars::U, SwmVars::V, SwmVars::ETA] {
+            Integrate::<Ab3>::compute_inc(rhs_eval.get_var(var), dt, &mut inc[var]);
+            state[var] += &inc[var];
+        }
+        state_factory.take(inc);
+    }
+
+    println!("Time: {} sec", now.elapsed().as_secs_f64());
+}
+
+fn set_initial_conditions(state: &mut S) {
+    let shape = state[SwmVars::U].get_data().shape();
     for idx in shape {
         state[SwmVars::U].get_data_mut()[idx] = 0.0;
         state[SwmVars::V].get_data_mut()[idx] = 0.0;
@@ -59,22 +79,6 @@ fn main() {
             .exp()
         }
     }
-
-    let mut rhs_eval = StateDeque::new(3);
-
-    let now = std::time::Instant::now();
-    for _ in 0..500 {
-        rhs_eval.push(rhs(&state, state_factory.get()), Some(&mut state_factory));
-
-        let mut inc = state_factory.get();
-        for var in [SwmVars::U, SwmVars::V, SwmVars::ETA] {
-            Integrate::<Ab3>::compute_inc(rhs_eval.get_var(var), dt, &mut inc[var]);
-            state[var] += &inc[var];
-        }
-        state_factory.take(inc);
-    }
-
-    println!("Time: {} sec", now.elapsed().as_secs_f64());
 }
 
 fn rhs(state: &S, mut inc: S) -> S {
