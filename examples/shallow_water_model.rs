@@ -1,6 +1,6 @@
 use fixed_map::Key;
 use seady::{
-    field::{cyclic_shift, ArrND, Field, IntoShape},
+    field::{ArrND, Field, IntoShape},
     grid::{FiniteVolumeGridBuilder, Grid, GridND, GridTopology},
     mask::{DomainMask, Mask},
     state::{State, StateDeque, StateFactory, VarKey},
@@ -93,7 +93,7 @@ fn pressure_gradient_i(state: &S, inc: &mut S) {
     let eta = state[VAR::ETA].clone();
     let shape = eta.shape();
     for idx in shape {
-        let ip1 = [idx[0], cyclic_shift(idx[1], 1, shape[1])];
+        let ip1 = idx.cshift(1, 1, shape);
         u_inc[idx] = (eta[ip1] - eta[idx]) / dx[idx];
     }
 }
@@ -105,7 +105,7 @@ fn pressure_gradient_j(state: &S, inc: &mut S) {
     let eta = state[VAR::ETA].clone();
     let shape = eta.shape();
     for idx in shape {
-        let jp1 = [cyclic_shift(idx[0], 1, shape[0]), idx[0]];
+        let jp1 = idx.cshift(0, 1, shape);
         v_inc[idx] = (eta[jp1] - eta[idx]) / dy[idx];
     }
 }
@@ -119,8 +119,8 @@ fn divergence(state: &S, inc: &mut S) {
     let eta_inc = &mut inc[VAR::ETA];
     let shape = u.shape();
     for idx in shape {
-        let im1 = [idx[0], cyclic_shift(idx[1], -1, shape[1])];
-        let jm1 = [cyclic_shift(idx[0], -1, shape[0]), idx[0]];
+        let im1 = idx.cshift(1, -1, shape);
+        let jm1 = idx.cshift(0, -1, shape);
         eta_inc[idx] = (u[idx] - u[im1]) / dx[idx] + (v[idx] - v[jm1]) / dy[idx];
     }
 }

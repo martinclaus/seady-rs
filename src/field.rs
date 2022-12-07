@@ -7,12 +7,48 @@ use std::{
     ops::{Add, AddAssign, Index, IndexMut, RangeFrom},
 };
 
-/// Type alias for index tuples
-pub type Ix<const ND: usize> = [usize; ND];
+/// Index tuples
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Ix<const ND: usize>([usize; ND]);
+
+impl<const ND: usize> Ix<ND> {
+    #[inline]
+    pub fn iter(&self) -> std::slice::Iter<usize> {
+        self.0.iter()
+    }
+
+    #[inline]
+    pub fn cshift(&self, dim: usize, shift: isize, shape: Shape<ND>) -> Self {
+        assert!(dim < ND);
+        let mut shifted = self.clone();
+        shifted[dim] = cyclic_shift(shifted[dim], shift, shape[dim]);
+        shifted
+    }
+}
+
+impl<const ND: usize> Index<usize> for Ix<ND> {
+    type Output = usize;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl<const ND: usize> IndexMut<usize> for Ix<ND> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
+
+impl<const ND: usize> From<[usize; ND]> for Ix<ND> {
+    fn from(from: [usize; ND]) -> Self {
+        Ix(from)
+    }
+}
 
 /// Array shape
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Shape<const ND: usize>(Ix<ND>);
+pub struct Shape<const ND: usize>([usize; ND]);
 
 impl<const ND: usize> Shape<ND> {
     /// Return an iterator over all possible indices of an array with shape `self`.
@@ -28,8 +64,8 @@ impl<const ND: usize> Shape<ND> {
     }
 }
 
-impl<const ND: usize> AsRef<Ix<ND>> for Shape<ND> {
-    fn as_ref(&self) -> &Ix<ND> {
+impl<const ND: usize> AsRef<[usize; ND]> for Shape<ND> {
+    fn as_ref(&self) -> &[usize; ND] {
         &self.0
     }
 }
@@ -42,7 +78,7 @@ impl<const ND: usize> IntoIterator for Shape<ND> {
     fn into_iter(self) -> Self::IntoIter {
         NDIndexer {
             inner: None,
-            shape: self.0,
+            shape: self,
         }
     }
 }
@@ -65,7 +101,7 @@ impl<const ND: usize> Index<RangeFrom<usize>> for Shape<ND> {
 
 pub struct NDIndexer<const ND: usize> {
     inner: Option<Ix<ND>>,
-    shape: Ix<ND>,
+    shape: Shape<ND>,
 }
 
 impl<const ND: usize> Iterator for NDIndexer<ND> {
@@ -91,7 +127,7 @@ impl<const ND: usize> Iterator for NDIndexer<ND> {
                 }
             }
             None => {
-                self.inner = Some([0 as usize; ND]);
+                self.inner = Some(Ix([0 as usize; ND]));
                 self.inner
             }
         }
@@ -122,7 +158,8 @@ impl<const ND: usize> IntoShape<ND> for &[usize] {
     }
 }
 
-pub fn cyclic_shift(idx: usize, shift: isize, len: usize) -> usize {
+#[inline]
+fn cyclic_shift(idx: usize, shift: isize, len: usize) -> usize {
     let len = len as isize;
     match (idx as isize) + shift {
         i if i < 0 => (i + len) as usize,
@@ -171,9 +208,9 @@ impl<const ND: usize, I> ArrND<ND, I> {
     #[inline]
     fn flatten_index(&self, index: Ix<ND>) -> usize {
         let shape = self.shape;
-        let mut sum = index[ND - 1];
+        let mut sum = 0;
         let mut prod: usize;
-        for d in 0..ND - 1 {
+        for d in 0..ND {
             prod = shape[d + 1..].iter().product();
             sum += index[d] * prod;
         }
@@ -181,18 +218,24 @@ impl<const ND: usize, I> ArrND<ND, I> {
     }
 }
 
-impl<const ND: usize, I> Index<Ix<ND>> for ArrND<ND, I> {
+impl<const ND: usize, T, I> Index<T> for ArrND<ND, I>
+where
+    T: Into<Ix<ND>>,
+{
     type Output = I;
     #[inline]
-    fn index(&self, index: Ix<ND>) -> &I {
-        &self.data[self.flatten_index(index)]
+    fn index(&self, index: T) -> &I {
+        &self.data[self.flatten_index(index.into())]
     }
 }
 
-impl<const ND: usize, I> IndexMut<Ix<ND>> for ArrND<ND, I> {
+impl<const ND: usize, T, I> IndexMut<T> for ArrND<ND, I>
+where
+    T: Into<Ix<ND>>,
+{
     #[inline]
-    fn index_mut(&mut self, index: Ix<ND>) -> &mut Self::Output {
-        &mut self.data[self.flatten_index(index)]
+    fn index_mut(&mut self, index: T) -> &mut Self::Output {
+        &mut self.data[self.flatten_index(index.into())]
     }
 }
 
@@ -302,7 +345,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::field::{IntoShape, Shape};
+    use crate::field::{IntoShape, Ix, Shape};
 
     use super::{ArrND, Field};
 
@@ -315,12 +358,12 @@ mod test {
     #[test]
     fn nd_indexer_produces_correct_values_1d() {
         use super::NDIndexer;
-        let shape = [2];
+        let shape = [2].into_shape();
 
         let mut indexer = NDIndexer { inner: None, shape };
 
-        assert_eq!(indexer.next(), Some([0]));
-        assert_eq!(indexer.next(), Some([1]));
+        assert_eq!(indexer.next(), Some(Ix([0])));
+        assert_eq!(indexer.next(), Some(Ix([1])));
         assert_eq!(indexer.next(), None);
         assert_eq!(indexer.next(), None);
     }
@@ -328,16 +371,16 @@ mod test {
     #[test]
     fn nd_indexer_produces_correct_values_2d() {
         use super::NDIndexer;
-        let shape = [2, 3];
+        let shape = [2, 3].into_shape();
 
         let mut indexer = NDIndexer { inner: None, shape };
 
-        assert_eq!(indexer.next(), Some([0, 0]));
-        assert_eq!(indexer.next(), Some([0, 1]));
-        assert_eq!(indexer.next(), Some([0, 2]));
-        assert_eq!(indexer.next(), Some([1, 0]));
-        assert_eq!(indexer.next(), Some([1, 1]));
-        assert_eq!(indexer.next(), Some([1, 2]));
+        assert_eq!(indexer.next(), Some(Ix([0, 0])));
+        assert_eq!(indexer.next(), Some(Ix([0, 1])));
+        assert_eq!(indexer.next(), Some(Ix([0, 2])));
+        assert_eq!(indexer.next(), Some(Ix([1, 0])));
+        assert_eq!(indexer.next(), Some(Ix([1, 1])));
+        assert_eq!(indexer.next(), Some(Ix([1, 2])));
         assert_eq!(indexer.next(), None);
         assert_eq!(indexer.next(), None);
     }
@@ -345,18 +388,18 @@ mod test {
     #[test]
     fn nd_indexer_produces_correct_values_3d() {
         use super::NDIndexer;
-        let shape = [2, 2, 2];
+        let shape = [2, 2, 2].into_shape();
 
         let mut indexer = NDIndexer { inner: None, shape };
 
-        assert_eq!(indexer.next(), Some([0, 0, 0]));
-        assert_eq!(indexer.next(), Some([0, 0, 1]));
-        assert_eq!(indexer.next(), Some([0, 1, 0]));
-        assert_eq!(indexer.next(), Some([0, 1, 1]));
-        assert_eq!(indexer.next(), Some([1, 0, 0]));
-        assert_eq!(indexer.next(), Some([1, 0, 1]));
-        assert_eq!(indexer.next(), Some([1, 1, 0]));
-        assert_eq!(indexer.next(), Some([1, 1, 1]));
+        assert_eq!(indexer.next(), Some(Ix([0, 0, 0])));
+        assert_eq!(indexer.next(), Some(Ix([0, 0, 1])));
+        assert_eq!(indexer.next(), Some(Ix([0, 1, 0])));
+        assert_eq!(indexer.next(), Some(Ix([0, 1, 1])));
+        assert_eq!(indexer.next(), Some(Ix([1, 0, 0])));
+        assert_eq!(indexer.next(), Some(Ix([1, 0, 1])));
+        assert_eq!(indexer.next(), Some(Ix([1, 1, 0])));
+        assert_eq!(indexer.next(), Some(Ix([1, 1, 1])));
         assert_eq!(indexer.next(), None);
         assert_eq!(indexer.next(), None);
     }
@@ -372,20 +415,28 @@ mod test {
 
         let arr = ArrND::full(0f64, shape);
         assert_eq!(arr.shape, shape.into_shape());
-        assert_eq!(arr[[0, 0]], 0f64);
-        assert_eq!(arr[[0, 1]], 0f64);
-        assert_eq!(arr[[1, 0]], 0f64);
-        assert_eq!(arr[[1, 1]], 0f64);
+        assert_eq!(arr[Ix([0, 0])], 0f64);
+        assert_eq!(arr[Ix([0, 1])], 0f64);
+        assert_eq!(arr[Ix([1, 0])], 0f64);
+        assert_eq!(arr[Ix([1, 1])], 0f64);
     }
 
     #[test]
     fn display_output() {
         let mut arr = ArrND::full(1f64, [2, 3, 2]);
-        arr[[1, 2, 1]] = 0f64;
+        arr[Ix([1, 2, 1])] = 0f64;
         assert_eq!(
             format!("{}", arr),
             "[[[1,1],\n[1,1],\n[1,1]],\n[[1,1],\n[1,1],\n[1,0]]]"
         );
+    }
+
+    #[test]
+    fn index_via_array() {
+        let mut arr = ArrND::full(1f64, [2, 3, 2]);
+        arr[[1, 2, 1]] = 0f64;
+        assert_eq!(arr[[1, 2, 1]], 0f64);
+        assert_eq!(arr[[1, 1, 1]], 1f64);
     }
 
     #[test]

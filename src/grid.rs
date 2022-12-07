@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::field::{cyclic_shift, ArrND, Field, IntoShape, Ix, Shape};
+use crate::field::{ArrND, Field, IntoShape, Ix, Shape};
 use crate::mask::Mask;
 use crate::Numeric;
 
@@ -59,13 +59,11 @@ pub trait GridTopology<const ND: usize> {
         center_mask: &<Self::Grid as Grid<ND>>::MaskContainer,
         cyclic_dims: usize,
     ) -> bool {
-        let ip1 = if dim >= (ND - cyclic_dims) {
-            cyclic_shift(pos[dim], 1, center_mask.shape()[0])
+        let new_pos = if dim >= (ND - cyclic_dims) {
+            pos.cshift(dim, 1, center_mask.shape())
         } else {
-            pos[dim]
+            pos.clone()
         };
-        let mut new_pos = pos.clone();
-        new_pos[dim] = ip1;
         center_mask[pos].is_inside() && center_mask[new_pos].is_inside()
     }
     /// Check if a corner of grid box at position `pos` is inside the domain
@@ -84,7 +82,7 @@ pub trait GridTopology<const ND: usize> {
                 let mut idx = pos.clone();
                 for n in 0..ND {
                     if ((i & (1 << n)) != 0) & (n >= ND - cyclic_dims) {
-                        idx[n] = cyclic_shift(pos[n], 1, shape[n])
+                        idx = idx.cshift(n, 1, shape);
                     }
                 }
                 idx
