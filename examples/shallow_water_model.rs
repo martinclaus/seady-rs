@@ -9,14 +9,14 @@ use seady::{
 
 /// Prognostic variables of the shallow water equations
 #[derive(Copy, Clone, Key, Debug)]
-pub enum SwmVars {
+pub enum VAR {
     U,
     V,
     ETA,
 }
-impl VarKey for SwmVars {}
+impl VarKey for VAR {}
 
-type S = State<SwmVars, ArrND<2, f64>, GridND<2, f64, DomainMask>>;
+type S = State<VAR, ArrND<2, f64>, GridND<2, f64, DomainMask>>;
 
 fn main() {
     let shape = [100, 100].into_shape();
@@ -35,9 +35,9 @@ fn main() {
         .build(2);
 
     let mut state_factory = StateFactory::new([
-        (SwmVars::ETA, grid.get_center()),
-        (SwmVars::V, grid.get_face(0)),
-        (SwmVars::U, grid.get_face(1)),
+        (VAR::ETA, grid.get_center()),
+        (VAR::V, grid.get_face(0)),
+        (VAR::U, grid.get_face(1)),
     ]);
 
     let mut rhs_eval = StateDeque::new(3);
@@ -50,7 +50,7 @@ fn main() {
         rhs_eval.push(rhs(&state, state_factory.get()), Some(&mut state_factory));
 
         let mut inc = state_factory.get();
-        for var in [SwmVars::U, SwmVars::V, SwmVars::ETA] {
+        for var in [VAR::U, VAR::V, VAR::ETA] {
             Integrate::<Ab3>::compute_inc(rhs_eval.get_data(var), dt, &mut inc[var]);
             state[var] += &inc[var];
         }
@@ -61,13 +61,13 @@ fn main() {
 }
 
 fn set_initial_conditions(state: &mut S) {
-    let shape = state[SwmVars::U].shape();
+    let shape = state[VAR::U].shape();
     for idx in shape {
-        state[SwmVars::U][idx] = 0.0;
-        state[SwmVars::V][idx] = 0.0;
+        state[VAR::U][idx] = 0.0;
+        state[VAR::V][idx] = 0.0;
     }
-    let eta_grid = state.get_grid(SwmVars::ETA);
-    let eta = &mut state[SwmVars::ETA];
+    let eta_grid = state.get_grid(VAR::ETA);
+    let eta = &mut state[VAR::ETA];
     {
         let x = eta_grid.get_coord(1);
         let y = eta_grid.get_coord(1);
@@ -87,10 +87,10 @@ fn rhs(state: &S, mut inc: S) -> S {
 }
 
 fn pressure_gradient_i(state: &S, inc: &mut S) {
-    let u_grid = state.get_grid(SwmVars::U);
+    let u_grid = state.get_grid(VAR::U);
     let dx = u_grid.get_delta(1).clone();
-    let u_inc = &mut inc[SwmVars::U];
-    let eta = state[SwmVars::ETA].clone();
+    let u_inc = &mut inc[VAR::U];
+    let eta = state[VAR::ETA].clone();
     let shape = eta.shape();
     for idx in shape {
         let ip1 = [idx[0], cyclic_shift(idx[1], 1, shape[1])];
@@ -99,10 +99,10 @@ fn pressure_gradient_i(state: &S, inc: &mut S) {
 }
 
 fn pressure_gradient_j(state: &S, inc: &mut S) {
-    let grid_v = state.get_grid(SwmVars::V);
+    let grid_v = state.get_grid(VAR::V);
     let dy = grid_v.get_delta(0).clone();
-    let v_inc = &mut inc[SwmVars::V];
-    let eta = state[SwmVars::ETA].clone();
+    let v_inc = &mut inc[VAR::V];
+    let eta = state[VAR::ETA].clone();
     let shape = eta.shape();
     for idx in shape {
         let jp1 = [cyclic_shift(idx[0], 1, shape[0]), idx[0]];
@@ -111,12 +111,12 @@ fn pressure_gradient_j(state: &S, inc: &mut S) {
 }
 
 fn divergence(state: &S, inc: &mut S) {
-    let eta_grid = state.get_grid(SwmVars::ETA);
+    let eta_grid = state.get_grid(VAR::ETA);
     let dx = eta_grid.get_delta(1).clone();
     let dy = eta_grid.get_delta(0).clone();
-    let u = state[SwmVars::U].clone();
-    let v = state[SwmVars::V].clone();
-    let eta_inc = &mut inc[SwmVars::ETA];
+    let u = state[VAR::U].clone();
+    let v = state[VAR::V].clone();
+    let eta_inc = &mut inc[VAR::ETA];
     let shape = u.shape();
     for idx in shape {
         let im1 = [idx[0], cyclic_shift(idx[1], -1, shape[1])];

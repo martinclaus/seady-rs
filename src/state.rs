@@ -101,6 +101,7 @@ where
         }
     }
 
+    /// Return a shared pointer to the grid of a variable named `index`
     pub fn get_grid(&self, index: K) -> Rc<G> {
         self.grid
             .get(index)
@@ -263,93 +264,58 @@ where
     }
 }
 
-// #[cfg(test)]
-// mod test {
-//     use std::rc::Rc;
+#[cfg(test)]
+mod test {
+    use super::{StateDeque, StateFactory, VarKey};
+    use crate::{field::ArrND, grid::GridND, mask::DomainMask};
+    use fixed_map::Key;
+    use std::rc::Rc;
 
-//     use fixed_map::Key;
+    #[derive(Clone, Copy, Key, Debug)]
+    enum SingleVar {
+        Var,
+    }
 
-//     use crate::{
-//         field::{ArrND, Field},
-//         grid::{Grid, GridND},
-//         mask::DomainMask,
-//         variable::Var,
-//     };
+    impl VarKey for SingleVar {}
 
-//     use super::{StateDeque, StateFactory, VarKey};
+    fn make_simple_state_factory(
+    ) -> StateFactory<SingleVar, ArrND<2, f64>, GridND<2, f64, DomainMask>> {
+        let grid = GridND::cartesian([5, 5], [0.0, 0.0], [1.0, 1.0], DomainMask::Inside);
+        let grid_map = (SingleVar::Var, Rc::new(grid));
+        StateFactory::new([grid_map])
+    }
 
-//     #[derive(Clone, Copy, Key, Debug)]
-//     enum SingleVar {
-//         Var,
-//     }
+    #[test]
+    fn state_deque_return_states_to_consumer() {
+        let mut state_factory = make_simple_state_factory();
+        let mut state_deque = StateDeque::new(2);
 
-//     impl VarKey for SingleVar {}
+        let capacity = state_deque.as_ref().capacity();
 
-//     fn make_simple_state_factory() -> StateFactory<
-//         SingleVar,
-//         Var<ArrND<2, f64>, GridND<2, f64, DomainMask>>,
-//         GridND<2, f64, DomainMask>,
-//     > {
-//         let mut grid = GridND::cartesian([5, 5], 0f64, 0f64, 1.0, 1.0);
-//         grid.with_mask(ArrND::full(DomainMask::Inside, [5, 5]));
+        for i in 0..2 * capacity {
+            state_deque.push(state_factory.make_state(), Some(&mut state_factory));
+            if i >= capacity {
+                assert_eq!(state_factory.buffer.len(), i - capacity + 1);
+            } else {
+                assert_eq!(state_factory.buffer.len(), 0);
+            }
+        }
+    }
 
-//         let grid_map = (SingleVar::Var, Rc::new(grid));
+    #[test]
+    fn state_deque_cannot_grow_beyond_capacity() {
+        let state_factory = make_simple_state_factory();
+        let mut state_deque = StateDeque::new(2);
 
-//         StateFactory::new([grid_map])
-//     }
+        let capacity = state_deque.as_ref().capacity();
 
-//     #[test]
-//     fn state_index_returns_variable() {
-//         let state = make_simple_state_factory().make_state();
-
-//         assert_eq!(state.0.len(), 1);
-
-//         let _ = &state[SingleVar::Var];
-//     }
-
-//     #[test]
-//     fn statedeque_index() {
-//         let state_factory = make_simple_state_factory();
-
-//         let mut state_deque = StateDeque::new(3);
-
-//         state_deque.push(state_factory.make_state(), None);
-
-//         let r = &state_deque[0];
-//         println!("{:#?}", r);
-//     }
-
-//     #[test]
-//     fn state_deque_return_states_to_consumer() {
-//         let mut state_factory = make_simple_state_factory();
-//         let mut state_deque = StateDeque::new(2);
-
-//         let capacity = state_deque.as_ref().capacity();
-
-//         for i in 0..2 * capacity {
-//             state_deque.push(state_factory.make_state(), Some(&mut state_factory));
-//             if i >= capacity {
-//                 assert_eq!(state_factory.buffer.len(), i - capacity + 1);
-//             } else {
-//                 assert_eq!(state_factory.buffer.len(), 0);
-//             }
-//         }
-//     }
-
-//     #[test]
-//     fn state_deque_cannot_grow_beyond_capacity() {
-//         let state_factory = make_simple_state_factory();
-//         let mut state_deque = StateDeque::new(2);
-
-//         let capacity = state_deque.as_ref().capacity();
-
-//         for i in 0..2 * capacity {
-//             state_deque.push(state_factory.make_state(), None);
-//             if i >= capacity {
-//                 assert_eq!(state_deque.len(), capacity)
-//             } else {
-//                 assert_eq!(state_deque.len(), i + 1)
-//             }
-//         }
-//     }
-// }
+        for i in 0..2 * capacity {
+            state_deque.push(state_factory.make_state(), None);
+            if i >= capacity {
+                assert_eq!(state_deque.len(), capacity)
+            } else {
+                assert_eq!(state_deque.len(), i + 1)
+            }
+        }
+    }
+}
