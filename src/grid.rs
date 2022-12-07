@@ -31,7 +31,7 @@ where
         *self.get_mask_mut() = mask;
     }
     /// Return the shape of the grid, i.e. the number of grid points along each dimension
-    fn size(&self) -> Shape<ND> {
+    fn shape(&self) -> Shape<ND> {
         self.get_mask().shape()
     }
 }

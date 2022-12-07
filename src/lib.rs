@@ -5,7 +5,6 @@ pub mod grid;
 pub mod mask;
 pub mod state;
 pub mod timestepping;
-pub mod variable;
 
 use std::ops::{Add, Div, Mul, Sub};
 

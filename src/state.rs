@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::variable::{Var, Variable};
+use crate::{field::Field, grid::Grid, Numeric};
 
 /// Marker trait for Variable keys of [State] collections
 pub trait VarKey: Copy + fixed_map::key::Key + std::fmt::Debug {}
@@ -27,39 +27,43 @@ impl VarKey for SwmVars {}
 /// The state is a collection of all prognostic variables of an set of differential equations, that are
 /// the variables which for the solution of the system.
 #[derive(Debug)]
-pub struct State<K, D, G>(Map<K, Var<D, G>>)
-where
-    K: VarKey;
-
-impl<K, D, G> AsRef<Map<K, Var<D, G>>> for State<K, D, G>
+pub struct State<K, D, G>
 where
     K: VarKey,
 {
-    fn as_ref(&self) -> &Map<K, Var<D, G>> {
-        &self.0
-    }
+    data: Map<K, D>,
+    grid: Map<K, Rc<G>>,
 }
 
-impl<K, D, G> AsMut<Map<K, Var<D, G>>> for State<K, D, G>
-where
-    K: VarKey,
-{
-    fn as_mut(&mut self) -> &mut Map<K, Var<D, G>> {
-        &mut self.0
-    }
-}
+// impl<K, D, G> AsRef<Map<K, Var<D, G>>> for State<K, D, G>
+// where
+//     K: VarKey,
+// {
+//     fn as_ref(&self) -> &Map<K, Var<D, G>> {
+//         &self.0
+//     }
+// }
+
+// impl<K, D, G> AsMut<Map<K, Var<D, G>>> for State<K, D, G>
+// where
+//     K: VarKey,
+// {
+//     fn as_mut(&mut self) -> &mut Map<K, Var<D, G>> {
+//         &mut self.0
+//     }
+// }
 
 impl<K, D, G> Index<K> for State<K, D, G>
 where
     K: VarKey,
 {
-    type Output = Var<D, G>;
+    type Output = D;
 
     fn index(&self, index: K) -> &Self::Output {
         &self
-            .0
+            .data
             .get(index)
-            .expect(&format!("Variable {index:?} should be in state"))
+            .expect(&format!("Data for variable {index:?} should be in state"))
     }
 }
 
@@ -68,9 +72,9 @@ where
     K: VarKey,
 {
     fn index_mut(&mut self, index: K) -> &mut Self::Output {
-        self.0
+        self.data
             .get_mut(index)
-            .expect(&format!("Variable {index:?} should be in state"))
+            .expect(&format!("Data for variable {index:?} should be in state"))
     }
 }
 
@@ -84,14 +88,24 @@ where
     /// Create a new state from a grid mapping.
     pub fn new<const ND: usize>(grid_map: &GridMap<K, G>) -> Self
     where
-        Var<D, G>: Variable<ND, Data = D, Grid = G>,
+        D: Field<ND>,
+        <D as Field<ND>>::Item: Numeric,
+        G: Grid<ND, Coord = D>,
     {
-        State(
-            grid_map
+        State {
+            data: grid_map
                 .iter()
-                .map(|(k, g)| (k, Var::<D, G>::zeros(g)))
+                .map(|(k, g)| (k, D::full(<D::Item as Numeric>::zero(), g.shape())))
                 .collect(),
-        )
+            grid: grid_map.iter().map(|(k, g)| (k, g.clone())).collect(),
+        }
+    }
+
+    pub fn get_grid(&self, index: K) -> Rc<G> {
+        self.grid
+            .get(index)
+            .expect("Grid for variable {index:?} should exist")
+            .clone()
     }
 }
 
@@ -132,7 +146,9 @@ where
     /// Create a new state object. This call involves memory allocation.
     fn make_state<const ND: usize>(&self) -> State<K, D, G>
     where
-        Var<D, G>: Variable<ND, Data = D, Grid = G>,
+        D: Field<ND>,
+        <D as Field<ND>>::Item: Numeric,
+        G: Grid<ND, Coord = D>,
     {
         State::new(&self.grid_map)
     }
@@ -141,7 +157,9 @@ where
     /// **No assumptions can be made about the content of the data contained in the state's variables**.
     pub fn get<const ND: usize>(&mut self) -> State<K, D, G>
     where
-        Var<D, G>: Variable<ND, Data = D, Grid = G>,
+        D: Field<ND>,
+        <D as Field<ND>>::Item: Numeric,
+        G: Grid<ND, Coord = D>,
     {
         self.buffer.pop_front().unwrap_or_else(|| self.make_state())
     }
@@ -198,8 +216,12 @@ where
     }
 
     /// Returns a [VecDeque<&Var<D, G>>] with references to a particular variable of all contained states.
-    pub fn get_var(&self, var: K) -> VecDeque<&Var<D, G>> {
-        VecDeque::from_iter(self.0.iter().map(|s| &s[var]))
+    pub fn get_data(&self, var: K) -> VecDeque<&D> {
+        VecDeque::from_iter(
+            self.0
+                .iter()
+                .map(|s| s.data.get(var).expect("All data should be set")),
+        )
     }
 }
 
