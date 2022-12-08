@@ -88,30 +88,43 @@ fn rhs(state: &S, mut inc: S) -> S {
 
 fn pressure_gradient_i(state: &S, inc: &mut S) {
     let u_grid = state.get_grid(VAR::U);
+    let u_mask = u_grid.get_mask().clone();
     let dx = u_grid.get_delta(1).clone();
     let u_inc = &mut inc[VAR::U];
     let eta = state[VAR::ETA].clone();
     let shape = eta.shape();
     for idx in shape {
-        let ip1 = idx.cshift(1, 1, shape);
-        u_inc[idx] = (eta[ip1] - eta[idx]) / dx[idx];
+        u_inc[idx] = match u_mask[idx] {
+            DomainMask::Outside => 0.0,
+            DomainMask::Inside => {
+                let ip1 = idx.cshift(1, 1, shape);
+                (eta[ip1] - eta[idx]) / dx[idx]
+            }
+        }
     }
 }
 
 fn pressure_gradient_j(state: &S, inc: &mut S) {
-    let grid_v = state.get_grid(VAR::V);
-    let dy = grid_v.get_delta(0).clone();
+    let v_grid = state.get_grid(VAR::V);
+    let v_mask = v_grid.get_mask().clone();
+    let dy = v_grid.get_delta(0).clone();
     let v_inc = &mut inc[VAR::V];
     let eta = state[VAR::ETA].clone();
     let shape = eta.shape();
     for idx in shape {
-        let jp1 = idx.cshift(0, 1, shape);
-        v_inc[idx] = (eta[jp1] - eta[idx]) / dy[idx];
+        v_inc[idx] = match v_mask[idx] {
+            DomainMask::Outside => 0.0,
+            DomainMask::Inside => {
+                let jp1 = idx.cshift(0, 1, shape);
+                (eta[jp1] - eta[idx]) / dy[idx]
+            }
+        }
     }
 }
 
 fn divergence(state: &S, inc: &mut S) {
     let eta_grid = state.get_grid(VAR::ETA);
+    let eta_mask = eta_grid.get_mask().clone();
     let dx = eta_grid.get_delta(1).clone();
     let dy = eta_grid.get_delta(0).clone();
     let u = state[VAR::U].clone();
@@ -119,8 +132,13 @@ fn divergence(state: &S, inc: &mut S) {
     let eta_inc = &mut inc[VAR::ETA];
     let shape = u.shape();
     for idx in shape {
-        let im1 = idx.cshift(1, -1, shape);
-        let jm1 = idx.cshift(0, -1, shape);
-        eta_inc[idx] = (u[idx] - u[im1]) / dx[idx] + (v[idx] - v[jm1]) / dy[idx];
+        eta_inc[idx] = match eta_mask[idx] {
+            DomainMask::Outside => 0.0,
+            DomainMask::Inside => {
+                let im1 = idx.cshift(1, -1, shape);
+                let jm1 = idx.cshift(0, -1, shape);
+                (u[idx] - u[im1]) / dx[idx] + (v[idx] - v[jm1]) / dy[idx]
+            }
+        }
     }
 }
