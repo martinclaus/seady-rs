@@ -177,6 +177,19 @@ where
     fn shape(&self) -> Shape<ND>;
 }
 
+/// Extension trait for fields containing ordered data.
+pub trait NumField<const ND: usize>
+where
+    Self: Field<ND>,
+    Self::Item: PartialOrd,
+{
+    /// Return the global minimum value of the array
+    fn min(&self) -> Self::Item;
+
+    /// Return the global maximum value of the array
+    fn max(&self) -> Self::Item;
+}
+
 /// N-dimensional Array with linear contiguous memory layout.
 ///
 /// The data is stored in a boxed slice and available via indexing with an
@@ -287,6 +300,35 @@ impl<const ND: usize, I: Copy> Field<ND> for ArrND<ND, I> {
     }
 }
 
+impl<const ND: usize, I> NumField<ND> for ArrND<ND, I>
+where
+    I: Copy + PartialOrd,
+{
+    fn min(&self) -> Self::Item {
+        let mut out: Option<I> = None;
+        self.data.iter().for_each(|i| match out {
+            Some(v) => match v.partial_cmp(i) {
+                Some(std::cmp::Ordering::Greater) => out = Some(*i),
+                _ => (),
+            },
+            None => out = Some(*i),
+        });
+        out.expect("Data should not be empty")
+    }
+
+    fn max(&self) -> Self::Item {
+        let mut out: Option<I> = None;
+        self.data.iter().for_each(|i| match out {
+            Some(v) => match v.partial_cmp(i) {
+                Some(std::cmp::Ordering::Less) => out = Some(*i),
+                _ => (),
+            },
+            None => out = Some(*i),
+        });
+        out.expect("Data should not be empty")
+    }
+}
+
 impl<const ND: usize, I: Display + Copy> Display for ArrND<ND, I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let slice = ArrSlice {
@@ -341,7 +383,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::field::{Ix, Shape};
+    use crate::field::{Ix, NumField, Shape};
 
     use super::{ArrND, Field};
 
@@ -415,6 +457,17 @@ mod test {
         assert_eq!(arr[Ix([0, 1])], 0f64);
         assert_eq!(arr[Ix([1, 0])], 0f64);
         assert_eq!(arr[Ix([1, 1])], 0f64);
+    }
+
+    #[test]
+    fn arrnd_min_max_val_is_correct() {
+        let arr = ArrND {
+            shape: Shape([2, 2]),
+            data: vec![-1.0, 0.0, -1.0, 3.0].into_boxed_slice(),
+        };
+
+        assert_eq!(arr.min(), -1.0);
+        assert_eq!(arr.max(), 3.0);
     }
 
     #[test]
