@@ -6,12 +6,15 @@
 
 use fixed_map::Key;
 use seady::{
-    field::{ArrND, Field, NumField},
+    field::{ArrND, Field},
     grid::{FiniteVolumeGridBuilder, Grid, GridND, GridTopology},
     mask::{DomainMask, Mask},
     state::{State, StateDeque, StateFactory, VarKey},
     timestepping::{Ab3, Integrate},
 };
+
+#[cfg(feature = "plotting")]
+use seady::field::NumField;
 
 /// Prognostic variables of the shallow water equations
 #[derive(Copy, Clone, Key, Debug)]
@@ -60,6 +63,8 @@ fn main() {
     // Create initial state
     let mut state = state_factory.get();
     set_initial_conditions(&mut state);
+
+    #[cfg(feature = "plotting")]
     plot_state("examples/img/swm_initial_state.png", &state).expect("Plotting failed");
 
     // start time integration
@@ -81,6 +86,7 @@ fn main() {
 
     println!("Time: {} sec", now.elapsed().as_secs_f64());
 
+    #[cfg(feature = "plotting")]
     plot_state("examples/img/swm_final_state.png", &state).expect("Plotting failed");
 }
 
@@ -167,6 +173,7 @@ fn divergence(state: &S, eval: &mut S) {
     }
 }
 
+#[cfg(feature = "plotting")]
 fn plot_state(file: &str, state: &S) -> Result<(), Box<dyn std::error::Error>> {
     use plotters::prelude::*;
     let root = BitMapBackend::new(file, (1024, 360)).into_drawing_area();
